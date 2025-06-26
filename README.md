@@ -6,7 +6,8 @@
 
 ---
 
-![Sample Output](screenshot.png)
+![Sample Output](![Screenshot 2025-06-26 211727](https://github.com/user-attachments/assets/20480093-1ab0-4723-a87f-2e20f81bed50)
+
 
 *Sample output: Finds exposed keys, checks their validity, and skips already-seen results.*
 
