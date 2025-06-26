@@ -6,13 +6,6 @@
 
 ---
 
-![Sample Output](![Screenshot 2025-06-26 211727](https://github.com/user-attachments/assets/20480093-1ab0-4723-a87f-2e20f81bed50)
-
-
-*Sample output: Finds exposed keys, checks their validity, and skips already-seen results.*
-
----
-
 ## **Features**
 
 - 🔍 **Scans public GitHub code** for API key patterns using advanced partitioned queries.
@@ -50,7 +43,7 @@
 
 4. **Run the script**:
     ```bash
-    python ApiInstructor.py
+    python github_key_scanner.py
     ```
 
 5. **Review your results** in `found_keys2.json`.
