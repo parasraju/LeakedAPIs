@@ -3,212 +3,290 @@ import re
 import json
 import time
 import os
+from typing import List, Dict, Optional, Set
+from pathlib import Path
+from dataclasses import dataclass
 
-# ===========================
-# CONFIGURATION
-# ===========================
-GITHUB_TOKENS = [
-    'Api1',
-    'Api2',
-    'Api3',
-    'Etc'
-]
+@dataclass
+class TokenConfig:
+    tokens: List[str]
+    current_idx: int = 0
+    
+    @property
+    def current_token(self) -> str:
+        return self.tokens[self.current_idx % len(self.tokens)]
 
-CURRENT_TOKEN_IDX = 0
+class Scanner:
+    def __init__(self, config: TokenConfig, result_file: str = "found_keys.json"):
+        self.config = config
+        self.result_file = Path(result_file)
+        self.patterns = {
+            "OpenAI": re.compile(r"sk-(?:proj-[A-Za-z0-9]{20,}|[A-Za-z0-9]{48})"),
+            "HuggingFace": re.compile(r"hf_[A-Za-z0-9]{32,64}")
+        }
+        self.queries = [
+            # Modern OpenAI project-scoped keys
+            "sk-proj- in:file extension:py",
+            "sk-proj- in:file extension:js",
+            "sk-proj- in:file extension:json",
+            "sk-proj- in:file extension:env",
+            "sk-proj- in:file extension:txt",
+            "sk-proj- in:file extension:yaml",
+            "sk-proj- in:file extension:yml",
+            
+            # Legacy OpenAI user keys
+            "sk- in:file extension:py",
+            "sk- in:file extension:js",
+            "sk- in:file extension:json",
+            "sk- in:file extension:env",
+            "sk- in:file extension:txt",
+            "sk- in:file extension:yaml",
+            "sk- in:file extension:yml",
+            
+            # Configuration files
+            "sk-proj- in:filename .env",
+            "sk-proj- in:filename .env.local",
+            "sk-proj- in:filename .env.development",
+            "sk-proj- in:filename .env.production",
+            
+            # Legacy configuration files
+            "sk- in:filename .env",
+            "sk- in:filename .env.local",
+            "sk- in:filename .env.development",
+            "sk- in:filename .env.production",
+            
+            # Hugging Face patterns
+            "hf_ in:file extension:py",
+            "hf_ in:file extension:js",
+            "hf_ in:file extension:json",
+            "hf_ in:file extension:env",
+            "hf_ in:file extension:txt",
+            "hf_ in:file extension:yaml",
+            "hf_ in:file extension:yml",
+            
+            # Configuration files
+            "hf_ in:filename .env",
+            "hf_ in:filename .env.local",
+            "hf_ in:filename .env.development",
+            "hf_ in:filename .env.production",
+        ]
+        self.per_page = 50
+        self.existing_keys: Set[str] = set()
 
-def get_headers():
-    return {'Authorization': f'token {GITHUB_TOKENS[CURRENT_TOKEN_IDX]}'}
-
-PATTERNS = {
-    "OpenAI": re.compile(r"sk-[A-Za-z0-9]{48}"),
-    "HuggingFace": re.compile(r"hf_[A-Za-z0-9]{32,64}")
-}
-
-QUERIES = [
-    # Python, JS, and common data files
-    "sk- in:file extension:py",
-    "sk- in:file extension:js",
-    "sk- in:file extension:json",
-    "hf_ in:file extension:py",
-    "hf_ in:file extension:js",
-    "hf_ in:file extension:env",
-    "hf_ in:file extension:json",
-]
-PER_PAGE = 50
-RESULT_FILE = "found_keys2.json"
-
-# ===========================
-# LOAD EXISTING KEYS
-def load_existing_keys():
-    existing_keys = set()
-    if os.path.isfile(RESULT_FILE):
+    def load_existing_keys(self) -> Set[str]:
+        """Load previously found keys from result file"""
+        if not self.result_file.exists():
+            return set()
+            
         try:
-            with open(RESULT_FILE, "r", encoding="utf-8") as f:
+            with open(self.result_file, "r", encoding="utf-8") as f:
                 results = json.load(f)
-                for entry in results:
-                    existing_keys.add(entry["key"])
-            print(f"Loaded {len(existing_keys)} existing keys from {RESULT_FILE}")
+                return {entry["key"] for entry in results}
         except Exception as e:
-            print(f"Could not load {RESULT_FILE}: {e}")
-    return existing_keys
+            print(f"Could not load {self.result_file}: {e}")
+            return set()
 
-# ===========================
-# CHECKERS
-def check_openai_key(api_key):
-    url = "https://api.openai.com/v1/models"
-    headers = {"Authorization": f"Bearer {api_key}"}
-    try:
-        response = requests.get(url, headers=headers, timeout=10)
-        if response.status_code == 200:
-            print(f"✅ OpenAI Key is valid! ({api_key[:10]}...{api_key[-6:]})")
-            return True
-        elif response.status_code == 401:
-            print(f"❌ OpenAI Key is invalid or expired. ({api_key[:10]}...{api_key[-6:]})")
-            return False
-        else:
-            print(f"❓ Unknown error (OpenAI). Status code: {response.status_code}")
-            return False
-    except Exception as e:
-        print(f"Error checking OpenAI key: {e}")
+    def get_headers(self) -> Dict[str, str]:
+        """Generate request headers with current token"""
+        return {"Authorization": f"token {self.config.current_token}"}
+
+    def check_openai_key(self, api_key: str) -> bool:
+        """Check if OpenAI key is valid using multiple endpoints"""
+        endpoints = [
+            # Project-scoped endpoint for modern keys
+            ("GET", "https://api.openai.com/v1/projects"),
+            # Legacy endpoint for old keys
+            ("GET", "https://api.openai.com/v1/models"),
+            # Alternative endpoint that might work for all keys
+            ("GET", "https://api.openai.com/v1/engines"),
+            # Organization endpoint
+            ("GET", "https://api.openai.com/v1/organizations")
+        ]
+        
+        for method, endpoint in endpoints:
+            try:
+                response = requests.request(
+                    method,
+                    endpoint,
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    timeout=10
+                )
+                
+                if response.status_code == 200:
+                    print(f"✅ Valid OpenAI key: {api_key[:10]}...{api_key[-6:]}")
+                    return True
+                elif response.status_code == 401:
+                    print(f"❌ Invalid OpenAI key: {api_key[:10]}...{api_key[-6:]}")
+                    return False
+            except Exception as e:
+                print(f"Error trying {endpoint}: {e}")
+                continue
+                
+        print(f"❓ Unknown OpenAI error: {response.status_code}")
         return False
 
-def check_huggingface_key(api_key):
-    url = "https://huggingface.co/api/whoami-v2"
-    headers = {"Authorization": f"Bearer {api_key}"}
-    try:
-        response = requests.get(url, headers=headers, timeout=10)
-        if response.status_code == 200:
-            print(f"✅ HuggingFace Key is valid! ({api_key[:10]}...{api_key[-6:]})")
-            return True
-        elif response.status_code == 401:
-            print(f"❌ HuggingFace Key is invalid or expired. ({api_key[:10]}...{api_key[-6:]})")
-            return False
-        else:
-            print(f"❓ Unknown error (HuggingFace). Status code: {response.status_code}")
-            return False
-    except Exception as e:
-        print(f"Error checking HuggingFace key: {e}")
-        return False
-
-# ===========================
-# GITHUB SEARCH FUNCTIONS
-def search_github_for_keys(query, page=1):
-    global CURRENT_TOKEN_IDX
-    while True:
-        url = "https://api.github.com/search/code"
-        params = {"q": query, "page": page, "per_page": PER_PAGE}
-        print(f"\n[Token {CURRENT_TOKEN_IDX+1}/{len(GITHUB_TOKENS)}] Searching GitHub (page {page}) for query: {query}")
-        r = requests.get(url, headers=get_headers(), params=params)
-        if r.status_code == 200:
-            return r.json()
-        elif r.status_code == 403:
-            print("⚠️  Rate limit hit! Switching GitHub token...")
-            CURRENT_TOKEN_IDX += 1
-            if CURRENT_TOKEN_IDX >= len(GITHUB_TOKENS):
-                print("🔄 All tokens exhausted. Sleeping for 5 minutes before retrying...")
-                CURRENT_TOKEN_IDX = 0
-                time.sleep(300)  # Wait for rate limit reset
+    def check_huggingface_key(self, api_key: str) -> bool:
+        """Check if HuggingFace key is valid"""
+        try:
+            response = requests.get(
+                "https://huggingface.co/api/whoami-v2",
+                headers={"Authorization": f"Bearer {api_key}"},
+                timeout=10
+            )
+            if response.status_code == 200:
+                print(f"✅ Valid HuggingFace key: {api_key[:10]}...{api_key[-6:]}")
+                return True
+            elif response.status_code == 401:
+                print(f"❌ Invalid HuggingFace key: {api_key[:10]}...{api_key[-6:]}")
+                return False
             else:
-                print(f"➡️  Switched to token #{CURRENT_TOKEN_IDX + 1}")
-            continue
-        else:
-            print("GitHub API error:", r.status_code, r.text)
-            return None
+                print(f"❓ Unknown HuggingFace error: {response.status_code}")
+                return False
+        except Exception as e:
+            print(f"Error checking HuggingFace key: {e}")
+            return False
 
-def get_file_content(item):
-    repo = item['repository']['full_name']
-    path = item['path']
-    branch = item['repository'].get('default_branch', 'main')
-    url = f"https://raw.githubusercontent.com/{repo}/{branch}/{path}"
-    try:
-        resp = requests.get(url, timeout=10)
-        if resp.status_code == 200:
-            return resp.text
-        else:
+    def check_api_key(self, api_key: str, service: str) -> bool:
+        """Check API key validity based on service type"""
+        if service == "OpenAI":
+            return self.check_openai_key(api_key)
+        elif service == "HuggingFace":
+            return self.check_huggingface_key(api_key)
+        return False
+
+    def search_github(self, query: str, page: int = 1) -> Optional[Dict]:
+        """Search GitHub API for keys"""
+        while True:
+            url = "https://api.github.com/search/code"
+            params = {"q": query, "page": page, "per_page": self.per_page}
+            print(f"[Token {self.config.current_idx+1}/{len(self.config.tokens)}] "
+                  f"Searching GitHub for: {query}")
+                  
+            try:
+                response = requests.get(
+                    url, 
+                    headers=self.get_headers(),
+                    params=params
+                )
+                
+                if response.status_code == 200:
+                    return response.json()
+                elif response.status_code == 403:
+                    print("⚠️ Rate limit hit! Switching GitHub token...")
+                    self.config.current_idx += 1
+                    if self.config.current_idx >= len(self.config.tokens):
+                        print("🔄 All tokens exhausted. Sleeping for 5 minutes...")
+                        self.config.current_idx = 0
+                        time.sleep(300)
+                    continue
+                else:
+                    print(f"GitHub API error: {response.status_code}")
+                    return None
+            except Exception as e:
+                print(f"Network error: {e}")
+                return None
+
+    def get_file_content(self, item: Dict) -> str:
+        """Get raw file content from GitHub"""
+        repo = item['repository']['full_name']
+        path = item['path']
+        branch = item['repository'].get('default_branch', 'main')
+        url = f"https://raw.githubusercontent.com/{repo}/{branch}/{path}"
+        
+        try:
+            response = requests.get(url, timeout=10)
+            if response.status_code == 200:
+                return response.text
             print(f"Could not fetch {url}")
             return ''
-    except Exception as e:
-        print(f"Error fetching file content: {e}")
-        return ''
-
-# ===========================
-# SCAN AND COLLECT METADATA
-def scan_for_keys_in_results(results, existing_keys):
-    found = []
-    for item in results.get("items", []):
-        file_url = item.get("html_url")
-        repo = item.get("repository", {}).get("full_name")
-        owner = item.get("repository", {}).get("owner", {}).get("login")
-        repo_url = item.get("repository", {}).get("html_url")
-        default_branch = item.get("repository", {}).get("default_branch")
-        path = item.get("path")
-        content = get_file_content(item)
-        for name, pattern in PATTERNS.items():
-            keys = pattern.findall(content)
-            for key in keys:
-                if key in existing_keys:
-                    print(f"Skipped duplicate {name} key ({key[:10]}...{key[-6:]})")
-                    continue  # Skip already-saved key
-                print(f"\nFound {name} key in {file_url} ({repo})")
-                valid = None
-                if name == "OpenAI":
-                    valid = check_openai_key(key)
-                elif name == "HuggingFace":
-                    valid = check_huggingface_key(key)
-                if valid:
-                    found.append({
-                        "file_url": file_url,
-                        "repo": repo,
-                        "owner": owner,
-                        "repo_url": repo_url,
-                        "default_branch": default_branch,
-                        "path": path,
-                        "type": name,
-                        "key": key,
-                        "valid": valid
-                    })
-                    existing_keys.add(key)
-                time.sleep(1)
-    return found
-
-def save_results_to_json(results, filename=RESULT_FILE):
-    try:
-        with open(filename, "w", encoding="utf-8") as f:
-            json.dump(results, f, indent=2)
-        print(f"\nResults saved to {filename}")
-    except Exception as e:
-        print("Error saving JSON:", e)
-
-# ===========================
-# MAIN SCANNER LOOP
-
-
-def main():
-    existing_keys = load_existing_keys()
-    all_found = []
-    if existing_keys:
-        try:
-            with open(RESULT_FILE, "r", encoding="utf-8") as f:
-                all_found = json.load(f)
         except Exception as e:
-            print(f"Warning: could not load full previous results: {e}")
+            print(f"Error fetching file: {e}")
+            return ''
 
-    for query in QUERIES:
-        page = 1
-        while True:
-            results = search_github_for_keys(query, page)
-            if not results or 'items' not in results or len(results['items']) == 0:
-                print(f"No more results for query: {query}.")
-                break
-            found = scan_for_keys_in_results(results, existing_keys)
-            all_found.extend(found)
-            save_results_to_json(all_found)
-            page += 1
-            time.sleep(3)
-    print("All queries complete. Exiting.")
+    def scan_results(self, results: Dict) -> List[Dict]:
+        """Scan GitHub search results for API keys"""
+        found = []
+        for item in results.get("items", []):
+            file_url = item.get("html_url")
+            repo = item.get("repository", {}).get("full_name")
+            owner = item.get("repository", {}).get("owner", {}).get("login")
+            repo_url = item.get("repository", {}).get("html_url")
+            default_branch = item.get("repository", {}).get("default_branch")
+            path = item.get("path")
+            
+            content = self.get_file_content(item)
+            for name, pattern in self.patterns.items():
+                keys = pattern.findall(content)
+                for key in keys:
+                    if key in self.existing_keys:
+                        print(f"Skipped duplicate {name} key: {key[:10]}...{key[-6:]}")
+                        continue
+                        
+                    print(f"\nFound {name} key in {file_url} ({repo})")
+                    valid = self.check_api_key(key, name)
+                    
+                    if valid:
+                        found.append({
+                            "file_url": file_url,
+                            "repo": repo,
+                            "owner": owner,
+                            "repo_url": repo_url,
+                            "default_branch": default_branch,
+                            "path": path,
+                            "type": name,
+                            "key": key,
+                            "valid": valid
+                        })
+                        self.existing_keys.add(key)
+                        
+        return found
+
+    def save_results(self, results: List[Dict]) -> None:
+        """Save scan results to JSON file"""
+        try:
+            with open(self.result_file, "w", encoding="utf-8") as f:
+                json.dump(results, f, indent=2)
+            print(f"\nResults saved to {self.result_file}")
+        except Exception as e:
+            print(f"Error saving JSON: {e}")
+
+    def run(self) -> None:
+        """Main scanning loop"""
+        self.existing_keys = self.load_existing_keys()
+        all_found = []
+        
+        try:
+            if self.result_file.exists():
+                with open(self.result_file, "r", encoding="utf-8") as f:
+                    all_found = json.load(f)
+        except Exception as e:
+            print(f"Warning: could not load previous results: {e}")
+
+        for query in self.queries:
+            page = 1
+            while True:
+                results = self.search_github(query, page)
+                if not results or 'items' not in results or len(results['items']) == 0:
+                    print(f"No more results for query: {query}")
+                    break
+                    
+                found = self.scan_results(results)
+                all_found.extend(found)
+                self.save_results(all_found)
+                page += 1
+                time.sleep(3)
+
+        print("All queries complete. Exiting.")
+
 
 if __name__ == "__main__":
     try:
-        main()
+        config = TokenConfig(
+            tokens=[
+                'Api Key'
+            ]
+        )
+        scanner = Scanner(config)
+        scanner.run()
     except KeyboardInterrupt:
         print("\nStopped by user.")
