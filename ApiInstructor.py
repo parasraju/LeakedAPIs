@@ -33,28 +33,13 @@ class Scanner:
             "sk-proj- in:file extension:txt",
             "sk-proj- in:file extension:yaml",
             "sk-proj- in:file extension:yml",
-            
-            # Legacy OpenAI user keys
-            "sk- in:file extension:py",
-            "sk- in:file extension:js",
-            "sk- in:file extension:json",
-            "sk- in:file extension:env",
-            "sk- in:file extension:txt",
-            "sk- in:file extension:yaml",
-            "sk- in:file extension:yml",
-            
+
             # Configuration files
             "sk-proj- in:filename .env",
             "sk-proj- in:filename .env.local",
             "sk-proj- in:filename .env.development",
             "sk-proj- in:filename .env.production",
-            
-            # Legacy configuration files
-            "sk- in:filename .env",
-            "sk- in:filename .env.local",
-            "sk- in:filename .env.development",
-            "sk- in:filename .env.production",
-            
+
             # Hugging Face patterns
             "hf_ in:file extension:py",
             "hf_ in:file extension:js",
