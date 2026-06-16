@@ -25,7 +25,6 @@ class Scanner:
             "HuggingFace": re.compile(r"hf_[A-Za-z0-9]{32,64}")
         }
         self.queries = [
-            # Modern OpenAI project-scoped keys
             "sk-proj- in:file extension:py",
             "sk-proj- in:file extension:js",
             "sk-proj- in:file extension:json",
@@ -34,13 +33,11 @@ class Scanner:
             "sk-proj- in:file extension:yaml",
             "sk-proj- in:file extension:yml",
 
-            # Configuration files
             "sk-proj- in:filename .env",
             "sk-proj- in:filename .env.local",
             "sk-proj- in:filename .env.development",
             "sk-proj- in:filename .env.production",
 
-            # Hugging Face patterns
             "hf_ in:file extension:py",
             "hf_ in:file extension:js",
             "hf_ in:file extension:json",
@@ -49,7 +46,6 @@ class Scanner:
             "hf_ in:file extension:yaml",
             "hf_ in:file extension:yml",
             
-            # Configuration files
             "hf_ in:filename .env",
             "hf_ in:filename .env.local",
             "hf_ in:filename .env.development",
@@ -78,13 +74,9 @@ class Scanner:
     def check_openai_key(self, api_key: str) -> bool:
         """Check if OpenAI key is valid using multiple endpoints"""
         endpoints = [
-            # Project-scoped endpoint for modern keys
             ("GET", "https://api.openai.com/v1/projects"),
-            # Legacy endpoint for old keys
             ("GET", "https://api.openai.com/v1/models"),
-            # Alternative endpoint that might work for all keys
             ("GET", "https://api.openai.com/v1/engines"),
-            # Organization endpoint
             ("GET", "https://api.openai.com/v1/organizations")
         ]
         
