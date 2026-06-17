@@ -25,6 +25,7 @@ class Scanner:
             "HuggingFace": re.compile(r"hf_[A-Za-z0-9]{32,64}")
         }
         self.queries = [
+
             "sk-proj- in:file extension:py",
             "sk-proj- in:file extension:js",
             "sk-proj- in:file extension:json",
@@ -45,7 +46,6 @@ class Scanner:
             "hf_ in:file extension:txt",
             "hf_ in:file extension:yaml",
             "hf_ in:file extension:yml",
-            
             "hf_ in:filename .env",
             "hf_ in:filename .env.local",
             "hf_ in:filename .env.development",
@@ -103,24 +103,50 @@ class Scanner:
         return False
 
     def check_huggingface_key(self, api_key: str) -> bool:
-        """Check if HuggingFace key is valid"""
+        if not api_key or not api_key.startswith("hf_"):
+            return False
+
         try:
             response = requests.get(
                 "https://huggingface.co/api/whoami-v2",
-                headers={"Authorization": f"Bearer {api_key}"},
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "User-Agent": "HF-Key-Checker/1.0"
+                },
                 timeout=10
             )
+
+            masked_key = (
+                f"{api_key[:10]}...{api_key[-6:]}"
+                if len(api_key) > 16
+                else api_key
+            )
+
             if response.status_code == 200:
-                print(f"✅ Valid HuggingFace key: {api_key[:10]}...{api_key[-6:]}")
+                print(f"✅ Valid Hugging Face key: {masked_key}")
                 return True
-            elif response.status_code == 401:
-                print(f"❌ Invalid HuggingFace key: {api_key[:10]}...{api_key[-6:]}")
+
+            elif response.status_code in (401, 403):
+                print(f"❌ Invalid or unauthorized Hugging Face key: {masked_key}")
                 return False
+
             else:
-                print(f"❓ Unknown HuggingFace error: {response.status_code}")
+                print(
+                    f"❓ Unexpected response ({response.status_code}): "
+                    f"{response.text[:200]}"
+                )
                 return False
+
+        except requests.exceptions.Timeout:
+            print("⌛ Request timed out")
+            return False
+
+        except requests.exceptions.RequestException as e:
+            print(f"🌐 Network error: {e}")
+            return False
+
         except Exception as e:
-            print(f"Error checking HuggingFace key: {e}")
+            print(f"⚠️ Unexpected error: {e}")
             return False
 
     def check_api_key(self, api_key: str, service: str) -> bool:
@@ -260,10 +286,10 @@ if __name__ == "__main__":
     try:
         config = TokenConfig(
             tokens=[
-                'Api Key'
+                'Keys here'
             ]
         )
         scanner = Scanner(config)
         scanner.run()
     except KeyboardInterrupt:
-        print("\nStopped by user.")
+        print("\nStopped by -user.")
