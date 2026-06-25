@@ -44,7 +44,6 @@ class Scanner:
             "hf_ in:file extension:json",
             "hf_ in:file extension:env",
             "hf_ in:file extension:txt",
-            "hf_ in:file extension:yaml",
             "hf_ in:file extension:yml",
             "hf_ in:filename .env",
             "hf_ in:filename .env.local",
