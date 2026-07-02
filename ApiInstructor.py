@@ -33,12 +33,6 @@ class Scanner:
             "sk-proj- in:file extension:txt",
             "sk-proj- in:file extension:yaml",
             "sk-proj- in:file extension:yml",
-
-            "sk-proj- in:filename .env",
-            "sk-proj- in:filename .env.local",
-            "sk-proj- in:filename .env.development",
-            "sk-proj- in:filename .env.production",
-
             "hf_ in:file extension:py",
             "hf_ in:file extension:js",
             "hf_ in:file extension:json",
