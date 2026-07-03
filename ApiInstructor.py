@@ -86,7 +86,7 @@ class Scanner:
                     print(f"✅ Valid OpenAI key: {api_key[:10]}...{api_key[-6:]}")
                     return True
                 elif response.status_code == 401:
-                    print(f"❌ Invalid OpenAI key: {api_key[:10]}...{api_key[-6:]}")
+                    print(f"❌ Invalid OpenAI Api key: {api_key[:10]}...{api_key[-6:]}")
                     return False
             except Exception as e:
                 print(f"Error trying {endpoint}: {e}")
