@@ -55,6 +55,14 @@ class Database:
             CREATE INDEX IF NOT EXISTS idx_keys_service  ON keys(service);
             CREATE INDEX IF NOT EXISTS idx_keys_valid    ON keys(valid);
             CREATE INDEX IF NOT EXISTS idx_keys_key      ON keys(key);
+            CREATE TABLE IF NOT EXISTS scan_progress (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                query_index     INTEGER NOT NULL DEFAULT 0,
+                page            INTEGER NOT NULL DEFAULT 1,
+                query_text      TEXT,
+                updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
             CREATE INDEX IF NOT EXISTS idx_activity_time ON activity_log(created_at);
         """)
         self.conn.commit()
@@ -136,6 +144,24 @@ class Database:
             "services": [dict(s) for s in services],
             "recent_activity": [dict(r) for r in recent],
         }
+
+    def save_progress(self, query_index: int, page: int, query_text: str = ""):
+        self.conn.execute("DELETE FROM scan_progress")
+        self.conn.execute(
+            "INSERT INTO scan_progress (query_index, page, query_text) VALUES (?, ?, ?)",
+            (query_index, page, query_text)
+        )
+        self.conn.commit()
+
+    def load_progress(self):
+        row = self.conn.execute("SELECT * FROM scan_progress ORDER BY id DESC LIMIT 1").fetchone()
+        if row:
+            return {"query_index": row["query_index"], "page": row["page"], "query_text": row["query_text"]}
+        return None
+
+    def clear_progress(self):
+        self.conn.execute("DELETE FROM scan_progress")
+        self.conn.commit()
 
     def close(self):
         if hasattr(self._local, "conn") and self._local.conn:

@@ -469,7 +469,7 @@ class Scanner:
                 )
 
     def run(self) -> None:
-        """Main scanning loop"""
+        """Main scanning loop with resume support"""
         self.existing_keys = self.load_existing_keys()
         all_found = []
         
@@ -480,18 +480,32 @@ class Scanner:
         except Exception as e:
             print(f"Warning: could not load previous results: {e}")
 
-        for query in self.queries:
+        start_idx = 0
+        if self.db:
+            progress = self.db.load_progress()
+            if progress:
+                start_idx = progress["query_index"]
+                print(f"Resuming from query #{start_idx + 1}: {progress['query_text']}")
+
+        for qi in range(start_idx, len(self.queries)):
+            query = self.queries[qi]
             if self.stop_event and self.stop_event.is_set():
                 print("Scan stopped by user.")
                 if self.db:
                     self.db.add_activity("Scan stopped by user", "warning")
+                    self.db.save_progress(qi, 1, query)
                 return
             page = 1
+            if qi == start_idx and self.db:
+                p = self.db.load_progress()
+                if p and p["page"] > 1:
+                    page = p["page"]
             while True:
                 if self.stop_event and self.stop_event.is_set():
                     print("Scan stopped by user.")
                     if self.db:
                         self.db.add_activity("Scan stopped by user", "warning")
+                        self.db.save_progress(qi, page, query)
                     return
                 results = self.search_github(query, page)
                 if not results or 'items' not in results or len(results['items']) == 0:
@@ -502,9 +516,13 @@ class Scanner:
                 all_found.extend(found)
                 self.save_results(all_found)
                 page += 1
+                if self.db:
+                    self.db.save_progress(qi, page, query)
                 time.sleep(3)
 
-        print("All queries complete. Exiting.")
+        print("Scan complete. Exiting.")
+        if self.db:
+            self.db.clear_progress()
 
 
 def start_dashboard(host="127.0.0.1", port=5000, db_path="found_keys.db", tokens=None):
