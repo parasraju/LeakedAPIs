@@ -403,40 +403,28 @@ class Scanner:
                 continue
         return ''
 
-    def _is_example_file(self, path: str) -> bool:
-        lower = path.lower()
-        skip_patterns = [
-            "example", "sample", "template", "fixture", "stub",
-            ".env.example", ".env.sample", ".env.template",
-            "test.", "tests/", "testing.", "spec.", "mock.",
-            "README", "contributing", "docs/",
-        ]
-        for p in skip_patterns:
-            if p in lower:
-                return True
-        return False
-
-    def _process_item_result(self, item: Dict, content: str, found: List[Dict]):
-        file_url = item.get("html_url")
-        repo = item.get("repository", {}).get("full_name")
-        owner = item.get("repository", {}).get("owner", {}).get("login")
-        repo_url = item.get("repository", {}).get("html_url")
-        default_branch = item.get("repository", {}).get("default_branch")
-        path = item.get("path")
-
-        if not content:
-            return
-
-        for name, pattern in self.patterns.items():
-            keys = pattern.findall(content)
-            for key in keys:
-                if key in self.existing_keys:
-                    print(f"Skipped duplicate {name} key: {key[:10]}...{key[-6:]}")
-                    continue
-
-                if self.is_placeholder(key):
-                    print(f" Skipped placeholder {name} key in {file_url}")
-                    continue
+    def scan_results(self, results: Dict) -> List[Dict]:
+        """Scan GitHub search results for API keys"""
+        found = []
+        for item in results.get("items", []):
+            file_url = item.get("html_url")
+            repo = item.get("repository", {}).get("full_name")
+            owner = item.get("repository", {}).get("owner", {}).get("login")
+            repo_url = item.get("repository", {}).get("html_url")
+            default_branch = item.get("repository", {}).get("default_branch")
+            path = item.get("path")
+            
+            content = self.get_file_content(item)
+            for name, pattern in self.patterns.items():
+                keys = pattern.findall(content)
+                for key in keys:
+                    if key in self.existing_keys:
+                        print(f"Skipped duplicate {name} key: {key[:10]}...{key[-6:]}")
+                        continue
+                        
+                    if self.is_placeholder(key):
+                        print(f" Skipped placeholder {name} key in {file_url}")
+                        continue
 
                 try:
                     print(f"\nFound {name} key ({key[:12]}...{key[-6:]}) in {repo}")
@@ -573,14 +561,7 @@ class Scanner:
                 page += 1
                 if self.db:
                     self.db.save_progress(qi, page, query)
-                for _ in range(1):
-                    if self.stop_event and self.stop_event.is_set():
-                        print("Scan stopped by user.")
-                        if self.db:
-                            self.db.add_activity("Scan stopped by user", "warning")
-                            self.db.save_progress(qi, page, query)
-                        return
-                    time.sleep(1)
+                time.sleep(3)
 
         print("Scan complete. Exiting.")
         if self.db:
@@ -593,7 +574,17 @@ def start_dashboard(host="127.0.0.1", port=5000, db_path="found_keys.db", tokens
     db = Database(db_path)
     db.initialize()
 
-    _run_dash(db, host=host, port=port, tokens=tokens)
+    if tokens:
+        import threading
+        token_list = [t.strip() for t in tokens.split(",") if t.strip()]
+        def bg_scan():
+            config = TokenConfig(tokens=token_list)
+            scanner = Scanner(config, result_file="found_keys.json", db=db)
+            scanner.run()
+        t = threading.Thread(target=bg_scan, daemon=True)
+        t.start()
+
+    _run_dash(db, host=host, port=port)
 
 
 if __name__ == "__main__":
@@ -640,5 +631,4 @@ if __name__ == "__main__":
         except KeyboardInterrupt:
             print("\nStopped by user.")
     else:
-        token_list = [t.strip() for t in args.tokens.split(",") if t.strip()] if args.tokens else None
-        start_dashboard(host=args.host, port=args.port, db_path=args.output, tokens=token_list)
+        start_dashboard(host=args.host, port=args.port, db_path=args.output, tokens=args.tokens)
