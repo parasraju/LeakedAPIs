@@ -1,5 +1,6 @@
 import threading
 import sys
+import time
 from pathlib import Path
 import requests
 from flask import Flask, jsonify, render_template, request
@@ -12,6 +13,9 @@ _db = None
 _scanner_thread = None
 _scanner_status = {"running": False, "progress": "", "query": "", "page": 0, "tokens_remaining": ""}
 _stop_event = None
+_scan_tokens = None
+_rate_limit_cache = {"core": {}, "search": {}, "updated": 0}
+_rate_lock = threading.Lock()
 
 
 @app.route("/")
@@ -60,9 +64,47 @@ def scan_status():
     return jsonify(_scanner_status)
 
 
+@app.route("/api/github/rate_limit")
+def rate_limit():
+    global _rate_limit_cache
+    now = time.time()
+    with _rate_lock:
+        if now - _rate_limit_cache["updated"] < 15 and _rate_limit_cache.get("core"):
+            return jsonify(_rate_limit_cache)
+
+    token = None
+    if _scan_tokens:
+        token = _scan_tokens[0]
+    if not token:
+        return jsonify({"core": {}, "search": {}, "error": "no token"})
+
+    try:
+        r = requests.get(
+            "https://api.github.com/rate_limit",
+            headers={"Authorization": f"token {token}"},
+            timeout=5
+        )
+        if r.status_code == 200:
+            data = r.json()
+            resources = data.get("resources", {})
+            core = resources.get("core", {})
+            search = resources.get("search", {})
+            with _rate_lock:
+                _rate_limit_cache = {
+                    "core": {"remaining": core.get("remaining"), "limit": core.get("limit"), "reset": core.get("reset")},
+                    "search": {"remaining": search.get("remaining"), "limit": search.get("limit"), "reset": search.get("reset")},
+                    "updated": now,
+                }
+            return jsonify(_rate_limit_cache)
+    except Exception:
+        pass
+    with _rate_lock:
+        return jsonify(_rate_limit_cache)
+
+
 @app.route("/api/scan/start", methods=["POST"])
 def scan_start():
-    global _scanner_thread, _scanner_status, _stop_event
+    global _scanner_thread, _scanner_status, _stop_event, _scan_tokens
 
     if _scanner_status["running"]:
         return jsonify({"error": "Scan already running"}), 409
@@ -72,6 +114,7 @@ def scan_start():
     if not tokens:
         return jsonify({"error": "At least one GitHub token required"}), 400
 
+    _scan_tokens = tokens
     _stop_event = threading.Event()
     _scanner_status = {"running": True, "progress": "Starting...",
                        "query": "", "page": 0, "tokens_remaining": ""}
