@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>API Instructor Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="/static/style.css" rel="stylesheet">
+</head>
+<body>
+  <nav class="navbar navbar-dark bg-dark px-3">
+    <span class="navbar-brand mb-0 h1">API Instructor</span>
+    <div class="d-flex align-items-center gap-3">
+      <span id="scan-status" class="text-light small">Idle</span>
+      <span id="tokens-remaining" class="text-white small"></span>
+      <span class="badge bg-success">Live</span>
+    </div>
+  </nav>
+
+  <div class="container-fluid py-3">
+    <div class="card border-primary mb-4" id="scan-card">
+      <div class="card-header bg-primary text-white py-2 d-flex justify-content-between align-items-center">
+        <strong>Start a Scan</strong>
+        <div>
+          <button id="stop-btn" class="btn btn-sm btn-outline-light" onclick="stopScan()" disabled>Stop Scan</button>
+        </div>
+      </div>
+      <div class="card-body py-3">
+        <div class="row g-2 align-items-end">
+          <div class="col-md-5">
+            <label class="form-label small mb-1 fw-semibold">GitHub Token(s)</label>
+            <input type="text" id="scan-tokens" class="form-control form-control-sm"
+                   placeholder="github_pat_xxx, github_pat_yyy (comma-separated)">
+            <div class="mt-1 small text-muted">Separate multiple tokens with commas</div>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label small mb-1 fw-semibold">Max Pages</label>
+            <input type="number" id="scan-pages" class="form-control form-control-sm" value="10" min="1" max="100">
+          </div>
+          <div class="col-md-2">
+            <label class="form-label small mb-1 fw-semibold">Delay (s)</label>
+            <input type="number" id="scan-delay" class="form-control form-control-sm" value="5" min="1" step="0.5">
+          </div>
+          <div class="col-md-3 d-grid">
+            <button id="scan-btn" class="btn btn-primary" onclick="startScan()">Start Scan</button>
+          </div>
+        </div>
+        <div id="scan-progress" class="mt-2 small d-none">
+          <span id="scan-progress-text"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="container-fluid py-4">
+    <div class="row g-3 mb-4" id="stats-row">
+      <div class="col-md-3">
+        <div class="card stat-card total">
+          <div class="card-body">
+            <h6 class="card-title">Total Keys</h6>
+            <h2 class="mb-0" id="stat-total">0</h2>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card stat-card valid">
+          <div class="card-body">
+            <h6 class="card-title">Valid</h6>
+            <h2 class="mb-0" id="stat-valid">0</h2>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card stat-card invalid">
+          <div class="card-body">
+            <h6 class="card-title">Invalid</h6>
+            <h2 class="mb-0" id="stat-invalid">0</h2>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card stat-card services">
+          <div class="card-body">
+            <h6 class="card-title">Services</h6>
+            <h2 class="mb-0" id="stat-services">0</h2>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-3">
+      <div class="col-lg-8">
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span>Keys</span>
+            <div>
+              <input type="text" id="key-search" class="form-control form-control-sm d-inline-block w-auto" placeholder="Search keys..." oninput="filterKeys()">
+              <select id="service-filter" class="form-select form-select-sm d-inline-block w-auto ms-1" onchange="filterKeys()">
+                <option value="all">All Services</option>
+              </select>
+              <select id="valid-filter" class="form-select form-select-sm d-inline-block w-auto ms-1" onchange="filterKeys()">
+                <option value="all">All Status</option>
+                <option value="valid">Valid</option>
+                <option value="invalid">Invalid</option>
+              </select>
+              <button class="btn btn-sm btn-outline-secondary ms-1" onclick="revalidateAll()" title="Re-check all keys">Re-check</button>
+            </div>
+          </div>
+          <div class="card-body p-0">
+            <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
+              <table class="table table-sm table-hover mb-0" id="keys-table">
+                <thead class="table-dark sticky-top">
+                  <tr>
+                    <th>Key</th>
+                    <th>Service</th>
+                    <th>Status</th>
+                    <th>Repo</th>
+                    <th>Found</th>
+                    <th>Report</th>
+                  </tr>
+                </thead>
+                <tbody id="keys-body">
+                  <tr><td colspan="6" class="text-center text-muted py-4">Loading...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-lg-4">
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span>Activity</span>
+            <span id="activity-count" class="badge bg-secondary">0</span>
+          </div>
+          <div class="card-body p-0" style="max-height: 600px; overflow-y: auto;">
+            <ul class="list-group list-group-flush" id="activity-list">
+              <li class="list-group-item text-muted text-center">Waiting for activity...</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="card mt-3">
+          <div class="card-header">Services Breakdown</div>
+          <div class="card-body p-0">
+            <ul class="list-group list-group-flush" id="services-list">
+              <li class="list-group-item text-muted">No data yet</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let allKeys = [];
+    let allServices = [];
+
+    async function fetchJSON(url) {
+      try {
+        const r = await fetch(url);
+        return await r.json();
+      } catch { return null; }
+    }
+
+    async function updateStats() {
+      const s = await fetchJSON('/api/stats');
+      if (!s) return;
+      document.getElementById('stat-total').textContent = s.total;
+      document.getElementById('stat-valid').textContent = s.valid;
+      document.getElementById('stat-invalid').textContent = s.invalid;
+      const svcCount = s.services ? s.services.length : 0;
+      document.getElementById('stat-services').textContent = svcCount;
+    }
+
+    async function updateKeys() {
+      const data = await fetchJSON('/api/keys');
+      if (!data) return;
+      allKeys = data;
+      allServices = [...new Set(data.map(k => k.service))].sort();
+      const sel = document.getElementById('service-filter');
+      sel.innerHTML = '<option value="all">All Services</option>' +
+        allServices.map(s => `<option value="${s}">${s}</option>`).join('');
+      filterKeys();
+    }
+
+    function filterKeys() {
+      const search = document.getElementById('key-search').value.toLowerCase();
+      const service = document.getElementById('service-filter').value;
+      const validFilter = document.getElementById('valid-filter').value;
+      const filtered = allKeys.filter(k => {
+        if (service !== 'all' && k.service !== service) return false;
+        if (validFilter === 'valid' && !k.valid) return false;
+        if (validFilter === 'invalid' && k.valid) return false;
+        if (search && !k.key.toLowerCase().includes(search) &&
+            !k.repo?.toLowerCase().includes(search)) return false;
+        return true;
+      });
+      const tbody = document.getElementById('keys-body');
+      if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No keys found</td></tr>';
+        return;
+      }
+      tbody.innerHTML = filtered.map(k => {
+        const masked = k.key.length > 16 ? k.key.slice(0, 12) + '...' + k.key.slice(-6) : k.key;
+        const badge = k.valid
+          ? '<span class="badge bg-success">Valid</span>'
+          : '<span class="badge bg-danger">Invalid</span>';
+        const repoLink = k.repo_url
+          ? `<a href="${k.repo_url}" target="_blank" title="${k.repo}">${(k.repo || '').split('/')[1] || k.repo}</a>`
+          : k.repo || '-';
+        const time = k.last_seen ? new Date(k.last_seen + 'Z').toLocaleString() : '-';
+        return `<tr>
+          <td><code title="${k.key}">${masked}</code></td>
+          <td><span class="badge bg-secondary">${k.service}</span></td>
+          <td>${badge}</td>
+          <td>${repoLink}</td>
+          <td class="text-muted small">${time}</td>
+          <td><button class="btn btn-sm btn-outline-warning report-btn" data-owner="${k.owner || ''}" data-repo="${(k.repo || '').split('/')[1] || ''}" data-key="${k.key}" data-service="${k.service}" data-fileurl="${k.file_url || ''}" data-path="${k.path || ''}" onclick="reportKey(this)" ${k.owner ? '' : 'disabled'} title="Create GitHub issue">Report</button></td>
+        </tr>`;
+      }).join('');
+    }
+
+    async function updateActivity() {
+      const data = await fetchJSON('/api/activity');
+      if (!data || data.length === 0) return;
+      document.getElementById('activity-count').textContent = data.length;
+      const list = document.getElementById('activity-list');
+      list.innerHTML = data.map(a => {
+        const time = new Date(a.created_at + 'Z').toLocaleTimeString();
+        let cls = 'list-group-item';
+        if (a.level === 'error') cls += ' list-group-item-danger';
+        else if (a.level === 'warning') cls += ' list-group-item-warning';
+        return `<li class="${cls} py-1 small"><span class="text-muted me-2">${time}</span>${a.message}</li>`;
+      }).join('');
+    }
+
+    async function updateServices() {
+      const s = await fetchJSON('/api/stats');
+      if (!s || !s.services) return;
+      const list = document.getElementById('services-list');
+      const total = s.services.reduce((a, b) => a + b.cnt, 0);
+      list.innerHTML = s.services.map(svc => {
+        const pct = total > 0 ? (svc.cnt / total * 100).toFixed(1) : 0;
+        return `<li class="list-group-item d-flex justify-content-between align-items-center">
+          ${svc.service}
+          <span class="badge bg-primary rounded-pill">${svc.cnt} (${pct}%)</span>
+        </li>`;
+      }).join('');
+    }
+
+    async function updateScanStatus() {
+      const s = await fetchJSON('/api/scan/status');
+      if (!s) return;
+      const statusEl = document.getElementById('scan-status');
+      const btn = document.getElementById('scan-btn');
+      const stopBtn = document.getElementById('stop-btn');
+      const progress = document.getElementById('scan-progress');
+      const text = document.getElementById('scan-progress-text');
+      const tokensEl = document.getElementById('tokens-remaining');
+      tokensEl.textContent = s.tokens_remaining ? 'Tokens: ' + s.tokens_remaining + ' left' : '';
+      if (s.running) {
+        statusEl.textContent = 'Scanning...';
+        statusEl.className = 'text-warning small fw-bold';
+        btn.disabled = true;
+        stopBtn.disabled = false;
+        progress.classList.remove('d-none');
+        text.textContent = s.progress + (s.page ? ` (page ${s.page})` : '');
+      } else {
+        statusEl.textContent = 'Idle';
+        statusEl.className = 'text-light small';
+        btn.disabled = false;
+        stopBtn.disabled = true;
+        progress.classList.add('d-none');
+      }
+    }
+
+    async function startScan() {
+      const tokens = document.getElementById('scan-tokens').value.trim();
+      if (!tokens) { alert('Enter your GitHub token(s) in the field above and click Start Scan'); return; }
+      const tokenList = tokens.split(',').map(t => t.trim()).filter(Boolean);
+      const maxPages = parseInt(document.getElementById('scan-pages').value) || 10;
+      const delay = parseFloat(document.getElementById('scan-delay').value) || 5;
+      const btn = document.getElementById('scan-btn');
+      btn.disabled = true;
+      btn.textContent = 'Starting...';
+      try {
+        const r = await fetch('/api/scan/start', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({tokens: tokenList, max_pages: maxPages, delay})
+        });
+        if (!r.ok) {
+          const err = await r.json();
+          alert(err.error || 'Failed to start scan');
+          btn.disabled = false;
+          btn.textContent = 'Start Scan';
+        }
+      } catch(e) {
+        alert('Network error');
+        btn.disabled = false;
+        btn.textContent = 'Start Scan';
+      }
+    }
+
+    async function stopScan() {
+      try {
+        document.getElementById('stop-btn').disabled = true;
+        await fetch('/api/scan/stop', { method: 'POST' });
+      } catch(e) {}
+    }
+
+    async function revalidateAll() {
+      if (!confirm('Re-check all keys against their APIs? This may take a while.')) return;
+      const btn = event.target;
+      btn.disabled = true;
+      btn.textContent = 'Checking...';
+      await fetch('/api/keys/revalidate', { method: 'POST' });
+      btn.disabled = false;
+      btn.textContent = 'Re-check';
+    }
+
+    async function reportKey(btn) {
+      const owner = btn.dataset.owner;
+      const repo = btn.dataset.repo;
+      const key = btn.dataset.key;
+      const service = btn.dataset.service;
+      const fileUrl = btn.dataset.fileurl;
+      const path = btn.dataset.path;
+      if (!owner || !repo) { alert('Missing repository info'); return; }
+      const token = prompt('Enter your GitHub token (with public_repo scope) to create an issue:');
+      if (!token) return;
+      btn.disabled = true;
+      btn.textContent = '...';
+      try {
+        const r = await fetch('/api/keys/report', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({owner, repo, key, service, file_url: fileUrl, path, token})
+        });
+        const text = await r.text();
+        let data;
+        try { data = JSON.parse(text); } catch { data = {error: text}; }
+        if (data.url) {
+          alert('Issue created: ' + data.url);
+          window.open(data.url, '_blank');
+        } else {
+          alert('Error: ' + (data.error || (r.status + ' ' + text.slice(0, 200))));
+        }
+      } catch(e) {
+        alert('Request failed: ' + e.message);
+      }
+      btn.disabled = false;
+      btn.textContent = 'Report';
+    }
+
+    async function refresh() {
+      await Promise.all([updateStats(), updateKeys(), updateActivity(), updateServices(), updateScanStatus()]);
+    }
+
+    setInterval(refresh, 3000);
+    refresh();
+  </script>
+</body>
+</html>

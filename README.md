@@ -1,95 +1,77 @@
-# **GitHub Public Secret Key Scanner**
+# API Instructor
 
----
+Scans GitHub for exposed API keys and displays results in a live dashboard.
 
-**A Python tool for security researchers and developers to detect and validate exposed API keys (like OpenAI and HuggingFace) in public GitHub repositories.**
+## Setup
 
----
+```powershell
+cd D:\p\apiInstructor
+pip install -r requirements.txt
+```
 
-## **Features**
+## Commands
 
-- 🔍 **Scans public GitHub code** for API key patterns using advanced partitioned queries.
-- 🔒 **Validates keys** by making API requests to check if they are live/usable.
-- 🔁 **Supports multiple GitHub API tokens** for extended, uninterrupted scanning.
-- ⚡ **Deduplicates findings:** skips checking and saving keys that were found before.
-- 📂 **Saves only valid, unique keys** to a results file (`found_keys2.json`).
+### Scan (CLI mode)
 
----
+```powershell
+python main.py scan -t "github_pat_xxxx" "github_pat_yyyy"
+```
 
-## **Requirements**
+| Flag | Description |
+|---|---|
+| `-t` | GitHub personal access token(s) |
+| `-o` | Output database file (default: found_keys.db) |
+| `-s` | Services to scan for (default: all) |
+| `--max-pages` | Max pages per query (default: 50) |
+| `--delay` | Delay between requests in seconds (default: 3.0) |
 
-- **Python 3.7+**
-- **requests** library  
-  *(install with `pip install requests`)*
-- One or more **GitHub personal access tokens (PATs)**  
-  *(scopes: `public_repo` are enough for public search)*
+### Dashboard only
 
----
+```powershell
+python main.py dashboard --port 5000
+```
 
-## **Usage**
+### Dashboard + background scan
 
-1. **Clone this repo** and place the script in a directory.
+```powershell
+python main.py dashboard -t "github_pat_xxxx" --port 5000
+```
 
-2. **Add your GitHub API tokens** to the `GITHUB_TOKENS` list in the script:
-    ```python
-    GITHUB_TOKENS = [
-        'ghp_xxx...',
-        'ghp_yyy...',
-        # etc.
-    ]
-    ```
+| Flag | Description |
+|---|---|
+| `--port` | Dashboard port (default: 5000) |
+| `--host` | Dashboard host (default: 127.0.0.1) |
+| `-t` | GitHub tokens to scan in background |
+| `--max-pages` | Max pages per query (default: 20) |
+| `--delay` | Delay between requests (default: 5.0) |
 
-3. *(Optional)* Adjust file types/languages in the `QUERIES` list to target more or fewer file types.
+Open **http://127.0.0.1:5000** in your browser.
 
-4. **Run the script**:
-    ```bash
-    python github_key_scanner.py
-    ```
+### Migrate old JSON data
 
-5. **Review your results** in `found_keys2.json`.
+```powershell
+python migrate.py
+```
 
----
+## Services scanned
 
-## **Example Output**
+OpenAI, HuggingFace, Anthropic, Stripe, GitHub, Google Gemini, Telegram Bot, Discord Bot, SendGrid, GitLab, Notion, Linear, Mailgun, Mapbox, Slack, AWS.
 
-This script prints every key it finds and checks.  
-**Only truly valid keys are saved.**
+## Project structure
 
-
----
-
-## **How It Works**
-
-- **Searches public GitHub repositories** for API keys in many common code/data file types.
-- **Checks the validity** of each found key using its real API.
-- **Deduplicates** keys against previous runs for maximum efficiency.
-- **Automatically rotates tokens** to avoid GitHub API rate limits.
-- Handles **404s, errors, and duplicate files** gracefully.
-
----
-
-## **Configuration**
-
-- **`GITHUB_TOKENS`**: Add as many tokens as you have for longer scans.
-- **`QUERIES`**: Add/remove file extensions or languages as needed for coverage.
-- **`RESULT_FILE`**: Change output filename if desired.
-- **`PATTERNS`**: Add more key regexes to support more APIs.
-
----
-
-## **Disclaimer**
-
-> This tool is provided for **authorized security research, education, and personal code auditing only**.  
-> **Do not use it for malicious purposes or to scan code you do not have permission to analyze.**  
-> Violating GitHub's [terms of service](https://docs.github.com/en/site-policy/github-terms/github-terms-of-service) or any laws is **strictly prohibited**.
-
----
-
-## **License**
-
-**MIT**
-
----
-
-**Happy (ethical) hunting!**  
-*Feel free to open an issue or PR to add more patterns or improvements.*
+```
+apiInstructor/
+├── main.py                  Entry point
+├── requirements.txt
+├── migrate.py               Migrate old found_keys.json to SQLite
+├── api/
+│   ├── cli.py               Argument parsing
+│   ├── db.py                SQLite database
+│   ├── patterns.py          Regex patterns + search queries
+│   ├── scanner.py           GitHub scanner
+│   └── validators.py        API key validators
+└── dashboard/
+    ├── app.py               Flask web app
+    ├── templates/            HTML templates
+    └── static/               CSS
+```
