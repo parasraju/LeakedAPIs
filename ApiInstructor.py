@@ -332,9 +332,13 @@ class Scanner:
                 response = requests.get(
                     url, 
                     headers=self.get_headers(),
-                    params=params
+                    params=params,
+                    timeout=15
                 )
-                
+
+                if self.stop_event and self.stop_event.is_set():
+                    return None
+
                 if response.status_code == 200:
                     self._rate_limit_remaining = response.headers.get('X-RateLimit-Remaining', '?')
                     return response.json()
@@ -387,6 +391,8 @@ class Scanner:
         urls.append(f"https://raw.githubusercontent.com/{repo}/{branch}/{path}")
 
         for url in urls:
+            if self.stop_event and self.stop_event.is_set():
+                return ''
             try:
                 response = requests.get(url, timeout=10)
                 if response.status_code == 200:
@@ -399,6 +405,8 @@ class Scanner:
         """Scan GitHub search results for API keys"""
         found = []
         for item in results.get("items", []):
+            if self.stop_event and self.stop_event.is_set():
+                break
             file_url = item.get("html_url")
             repo = item.get("repository", {}).get("full_name")
             owner = item.get("repository", {}).get("owner", {}).get("login")
@@ -508,6 +516,12 @@ class Scanner:
                         self.db.save_progress(qi, page, query)
                     return
                 results = self.search_github(query, page)
+                if self.stop_event and self.stop_event.is_set():
+                    print("Scan stopped by user.")
+                    if self.db:
+                        self.db.add_activity("Scan stopped by user", "warning")
+                        self.db.save_progress(qi, page, query)
+                    return
                 if not results or 'items' not in results or len(results['items']) == 0:
                     print(f"No more results for query: {query}")
                     break
@@ -518,7 +532,14 @@ class Scanner:
                 page += 1
                 if self.db:
                     self.db.save_progress(qi, page, query)
-                time.sleep(3)
+                for _ in range(3):
+                    if self.stop_event and self.stop_event.is_set():
+                        print("Scan stopped by user.")
+                        if self.db:
+                            self.db.add_activity("Scan stopped by user", "warning")
+                            self.db.save_progress(qi, page, query)
+                        return
+                    time.sleep(1)
 
         print("Scan complete. Exiting.")
         if self.db:
@@ -530,16 +551,6 @@ def start_dashboard(host="127.0.0.1", port=5000, db_path="found_keys.db", tokens
     from dashboard.app import app, start_dashboard as _run_dash
     db = Database(db_path)
     db.initialize()
-
-    if tokens:
-        import threading
-        token_list = [t.strip() for t in tokens.split(",") if t.strip()]
-        def bg_scan():
-            config = TokenConfig(tokens=token_list)
-            scanner = Scanner(config, result_file="found_keys.json", db=db)
-            scanner.run()
-        t = threading.Thread(target=bg_scan, daemon=True)
-        t.start()
 
     _run_dash(db, host=host, port=port)
 
@@ -588,4 +599,4 @@ if __name__ == "__main__":
         except KeyboardInterrupt:
             print("\nStopped by user.")
     else:
-        start_dashboard(host=args.host, port=args.port, db_path=args.output, tokens=args.tokens)
+        start_dashboard(host=args.host, port=args.port, db_path=args.output)
