@@ -319,6 +319,7 @@
         statusEl.textContent = 'Scanning...';
         dotEl.className = 'w-1.5 h-1.5 rounded-full bg-amber-400 live-dot';
         btn.disabled = true;
+        btn.textContent = 'Scanning';
         btn.className = 'w-full h-8 bg-mute text-white text-sm font-medium rounded-full cursor-not-allowed';
         stopBtn.disabled = false;
         text.textContent = s.progress + (s.page ? ` (page ${s.page})` : '');
@@ -336,8 +337,6 @@
       const tokens = document.getElementById('scan-tokens').value.trim();
       if (!tokens) { alert('Enter your GitHub token(s)'); return; }
       const tokenList = tokens.split(',').map(t => t.trim()).filter(Boolean);
-      const maxPages = parseInt(document.getElementById('scan-pages').value) || 10;
-      const delay = parseFloat(document.getElementById('scan-delay').value) || 5;
       const btn = document.getElementById('scan-btn');
       btn.disabled = true;
       btn.textContent = 'Starting...';
@@ -345,16 +344,17 @@
         const r = await fetch('/api/scan/start', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({tokens: tokenList, max_pages: maxPages, delay})
+          body: JSON.stringify({tokens: tokenList})
         });
         if (!r.ok) {
           const err = await r.json();
-          alert(err.error || 'Failed to start scan');
+          alert(err.error || 'Failed');
           btn.disabled = false;
+          btn.textContent = 'Start Scan';
         }
-      } catch(e) { alert('Network error'); }
-      btn.disabled = false;
-      btn.textContent = 'Start Scan';
+      } catch(e) { alert('Network error');
+        btn.disabled = false;
+        btn.textContent = 'Start Scan'; }
     }
 
     async function stopScan() {
