@@ -332,9 +332,13 @@ class Scanner:
                 response = requests.get(
                     url, 
                     headers=self.get_headers(),
-                    params=params
+                    params=params,
+                    timeout=15
                 )
-                
+
+                if self.stop_event and self.stop_event.is_set():
+                    return None
+
                 if response.status_code == 200:
                     self._rate_limit_remaining = response.headers.get('X-RateLimit-Remaining', '?')
                     return response.json()
@@ -537,16 +541,6 @@ def start_dashboard(host="127.0.0.1", port=5000, db_path="found_keys.db", tokens
     db = Database(db_path)
     db.initialize()
 
-    if tokens:
-        import threading
-        token_list = [t.strip() for t in tokens.split(",") if t.strip()]
-        def bg_scan():
-            config = TokenConfig(tokens=token_list)
-            scanner = Scanner(config, result_file="found_keys.json", db=db)
-            scanner.run()
-        t = threading.Thread(target=bg_scan, daemon=True)
-        t.start()
-
     _run_dash(db, host=host, port=port)
 
 
@@ -594,4 +588,4 @@ if __name__ == "__main__":
         except KeyboardInterrupt:
             print("\nStopped by user.")
     else:
-        start_dashboard(host=args.host, port=args.port, db_path=args.output, tokens=args.tokens)
+        start_dashboard(host=args.host, port=args.port, db_path=args.output)
