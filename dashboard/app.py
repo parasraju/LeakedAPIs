@@ -13,9 +13,6 @@ _db = None
 _scanner_thread = None
 _scanner_status = {"running": False, "progress": "", "query": "", "page": 0, "tokens_remaining": ""}
 _stop_event = None
-_scan_tokens = None
-_rate_limit_cache = {"core": {}, "search": {}, "updated": 0}
-_rate_lock = threading.Lock()
 
 
 @app.route("/")
@@ -64,44 +61,6 @@ def scan_status():
     return jsonify(_scanner_status)
 
 
-@app.route("/api/github/rate_limit")
-def rate_limit():
-    global _rate_limit_cache
-    now = time.time()
-    with _rate_lock:
-        if now - _rate_limit_cache["updated"] < 15 and _rate_limit_cache.get("core"):
-            return jsonify(_rate_limit_cache)
-
-    token = None
-    if _scan_tokens:
-        token = _scan_tokens[0]
-    if not token:
-        return jsonify({"core": {}, "search": {}, "error": "no token"})
-
-    try:
-        r = requests.get(
-            "https://api.github.com/rate_limit",
-            headers={"Authorization": f"token {token}"},
-            timeout=5
-        )
-        if r.status_code == 200:
-            data = r.json()
-            resources = data.get("resources", {})
-            core = resources.get("core", {})
-            search = resources.get("search", {})
-            with _rate_lock:
-                _rate_limit_cache = {
-                    "core": {"remaining": core.get("remaining"), "limit": core.get("limit"), "reset": core.get("reset")},
-                    "search": {"remaining": search.get("remaining"), "limit": search.get("limit"), "reset": search.get("reset")},
-                    "updated": now,
-                }
-            return jsonify(_rate_limit_cache)
-    except Exception:
-        pass
-    with _rate_lock:
-        return jsonify(_rate_limit_cache)
-
-
 @app.route("/api/scan/start", methods=["POST"])
 def scan_start():
     global _scanner_thread, _scanner_status, _stop_event, _scan_tokens
@@ -135,9 +94,32 @@ def scan_start():
                 result = original_search(query, page)
                 remaining = getattr(scanner, '_rate_limit_remaining', None)
                 if remaining is not None:
-                    _scanner_status["tokens_remaining"] = str(remaining)
+                    _scanner_status["tokens_remaining"] = f"Search: {remaining}"
                 return result
 
+            def fetch_rate_limit():
+                while not (_stop_event and _stop_event.is_set()):
+                    try:
+                        r = requests.get(
+                            "https://api.github.com/rate_limit",
+                            headers={"Authorization": f"token {tokens[0]}"},
+                            timeout=5
+                        )
+                        if r.status_code == 200:
+                            d = r.json()
+                            c = d.get("resources", {}).get("core", {})
+                            s = d.get("resources", {}).get("search", {})
+                            _scanner_status["tokens_remaining"] = \
+                                f"Core: {c.get('remaining', '?')}/{c.get('limit', '?')}  Search: {s.get('remaining', '?')}/{s.get('limit', '?')}"
+                    except Exception:
+                        pass
+                    for _ in range(60):
+                        if _stop_event and _stop_event.is_set():
+                            return
+                        time.sleep(1)
+
+            t = threading.Thread(target=fetch_rate_limit, daemon=True)
+            t.start()
             scanner.search_github = search_with_status
             scanner.run()
         except Exception as e:
