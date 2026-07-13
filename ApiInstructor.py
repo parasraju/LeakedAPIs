@@ -508,6 +508,12 @@ class Scanner:
                         self.db.save_progress(qi, page, query)
                     return
                 results = self.search_github(query, page)
+                if self.stop_event and self.stop_event.is_set():
+                    print("Scan stopped by user.")
+                    if self.db:
+                        self.db.add_activity("Scan stopped by user", "warning")
+                        self.db.save_progress(qi, page, query)
+                    return
                 if not results or 'items' not in results or len(results['items']) == 0:
                     print(f"No more results for query: {query}")
                     break
