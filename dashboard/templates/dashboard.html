@@ -73,6 +73,7 @@
           <span class="text-white/40">Search</span>
           <span id="rate-search" class="text-white/70 font-mono">--</span>
         </div>
+        <div id="tokens-remaining" class="text-white/50 text-[11px] font-mono pt-1"></div>
       </div>
     </div>
     <div class="px-4 py-3 border-t border-white/10">
@@ -314,7 +315,7 @@
       const stopBtn = document.getElementById('stop-btn');
       const text = document.getElementById('scan-progress-text');
       const tokensEl = document.getElementById('tokens-remaining');
-      tokensEl.textContent = s.tokens_remaining || '';
+      if (tokensEl) tokensEl.textContent = s.tokens_remaining || '';
       if (s.running) {
         statusEl.textContent = 'Scanning...';
         dotEl.className = 'w-1.5 h-1.5 rounded-full bg-amber-400 live-dot';
@@ -358,7 +359,11 @@
     }
 
     async function stopScan() {
-      try { document.getElementById('stop-btn').disabled = true; await fetch('/api/scan/stop', { method: 'POST' }); } catch(e) {}
+      const btn = document.getElementById('stop-btn');
+      btn.disabled = true;
+      btn.textContent = 'Stopping...';
+      try { await fetch('/api/scan/stop', { method: 'POST' }); } catch(e) {}
+      setTimeout(() => { btn.textContent = 'Stop'; }, 3000);
     }
 
     async function revalidateAll() {
