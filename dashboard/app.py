@@ -85,23 +85,17 @@ def rate_limit():
     return jsonify(_rate_cache)
 
 
-@app.route("/api/scan/start", methods=["POST"])
-def scan_start():
+def _start_scan(tokens):
     global _scanner_thread, _scanner_status, _stop_event, _scan_tokens
 
-    if _scanner_status["running"]:
-        return jsonify({"error": "Scan already running"}), 409
-
-    data = request.get_json(silent=True) or {}
-    tokens = data.get("tokens", [])
-    if not tokens:
-        return jsonify({"error": "At least one GitHub token required"}), 400
+    progress = _db.load_progress()
+    if progress and progress.get("query_index") == -1:
+        _db.clear_progress()
 
     _scan_tokens = tokens
     _stop_event = threading.Event()
     _scanner_status = {"running": True, "progress": "Starting...",
                        "query": "", "page": 0, "tokens_remaining": ""}
-    _db.clear_progress()
 
     def run_scan():
         global _scanner_status
@@ -156,6 +150,19 @@ def scan_start():
     _scanner_thread = threading.Thread(target=run_scan, daemon=True)
     _scanner_thread.start()
     _db.add_activity("Scan started", "info")
+
+
+@app.route("/api/scan/start", methods=["POST"])
+def scan_start():
+    if _scanner_status["running"]:
+        return jsonify({"error": "Scan already running"}), 409
+
+    data = request.get_json(silent=True) or {}
+    tokens = data.get("tokens", [])
+    if not tokens:
+        return jsonify({"error": "At least one GitHub token required"}), 400
+
+    _start_scan(tokens)
     return jsonify({"status": "started"})
 
 
@@ -224,10 +231,13 @@ def handle_uncaught(e):
     return jsonify({"error": "Unhandled exception: " + str(e)}), 500
 
 
-def start_dashboard(db, host="127.0.0.1", port=5000):
+def start_dashboard(db, host="127.0.0.1", port=5000, tokens=None):
     global _db
     _db = db
     _scanner_status["progress"] = "Idle"
     print(f"\nDashboard: http://{host}:{port}")
+    if tokens:
+        _start_scan(tokens)
+        print("Auto-starting scan from last saved position...")
     print("Press Ctrl+C to stop.\n")
     app.run(host=host, port=port, debug=False, use_reloader=False)

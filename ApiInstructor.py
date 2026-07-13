@@ -7,6 +7,7 @@ import sys
 from typing import List, Dict, Optional, Set
 from pathlib import Path
 from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 @dataclass
 class TokenConfig:
@@ -23,6 +24,7 @@ class Scanner:
         self.result_file = Path(result_file)
         self.db = db
         self.stop_event = stop_event
+        self._session = requests.Session()
         self._rate_limit_remaining = None
         self.patterns = {
             "OpenAI": re.compile(r"sk-(?:proj-[A-Za-z0-9]{20,}|[A-Za-z0-9]{20,})"),
@@ -329,7 +331,7 @@ class Scanner:
                   f"Searching GitHub for: {query}")
                    
             try:
-                response = requests.get(
+                response = self._session.get(
                     url, 
                     headers=self.get_headers(),
                     params=params,
@@ -394,70 +396,109 @@ class Scanner:
             if self.stop_event and self.stop_event.is_set():
                 return ''
             try:
-                response = requests.get(url, timeout=10)
+                response = self._session.get(url, timeout=5)
                 if response.status_code == 200:
                     return response.text
             except Exception:
                 continue
         return ''
 
-    def scan_results(self, results: Dict) -> List[Dict]:
-        """Scan GitHub search results for API keys"""
-        found = []
-        for item in results.get("items", []):
-            if self.stop_event and self.stop_event.is_set():
-                break
-            file_url = item.get("html_url")
-            repo = item.get("repository", {}).get("full_name")
-            owner = item.get("repository", {}).get("owner", {}).get("login")
-            repo_url = item.get("repository", {}).get("html_url")
-            default_branch = item.get("repository", {}).get("default_branch")
-            path = item.get("path")
-            
-            content = self.get_file_content(item)
-            for name, pattern in self.patterns.items():
-                keys = pattern.findall(content)
-                for key in keys:
-                    if key in self.existing_keys:
-                        print(f"Skipped duplicate {name} key: {key[:10]}...{key[-6:]}")
-                        continue
-                        
-                    if self.is_placeholder(key):
-                        print(f" Skipped placeholder {name} key in {file_url}")
-                        continue
+    def _is_example_file(self, path: str) -> bool:
+        lower = path.lower()
+        skip_patterns = [
+            "example", "sample", "template", "fixture", "stub",
+            ".env.example", ".env.sample", ".env.template",
+            "test.", "tests/", "testing.", "spec.", "mock.",
+            "README", "contributing", "docs/",
+        ]
+        for p in skip_patterns:
+            if p in lower:
+                return True
+        return False
 
-                    try:
-                        print(f"\nFound {name} key ({key[:12]}...{key[-6:]}) in {repo}")
-                    except UnicodeEncodeError:
-                        print(f"\nFound {name} key in {repo}")
-                    valid = self.check_api_key(key, name)
-                    status = "Valid" if valid else "Not Valid"
-                    try:
-                        print(f"  -> {name}: {status}")
-                    except UnicodeEncodeError:
-                        pass
-                    if self.db:
-                        self.db.add_activity(f"{name}: {status}", "info")
-                    entry = {
-                        "file_url": file_url,
-                        "repo": repo,
-                        "owner": owner,
-                        "repo_url": repo_url,
-                        "default_branch": default_branch,
-                        "path": path,
-                        "type": name,
-                        "key": key,
-                        "valid": valid
-                    }
-                    found.append(entry)
-                    self.existing_keys.add(key)
-                    if self.db:
-                        self.db.add_key(
-                            key=key, service=name, valid=valid,
-                            file_url=file_url, repo=repo,
-                            owner=owner, repo_url=repo_url, path=path,
-                        )
-                        
+    def _process_item_result(self, item: Dict, content: str, found: List[Dict]):
+        file_url = item.get("html_url")
+        repo = item.get("repository", {}).get("full_name")
+        owner = item.get("repository", {}).get("owner", {}).get("login")
+        repo_url = item.get("repository", {}).get("html_url")
+        default_branch = item.get("repository", {}).get("default_branch")
+        path = item.get("path")
+
+        if not content:
+            return
+
+        for name, pattern in self.patterns.items():
+            keys = pattern.findall(content)
+            for key in keys:
+                if key in self.existing_keys:
+                    print(f"Skipped duplicate {name} key: {key[:10]}...{key[-6:]}")
+                    continue
+
+                if self.is_placeholder(key):
+                    print(f" Skipped placeholder {name} key in {file_url}")
+                    continue
+
+                try:
+                    print(f"\nFound {name} key ({key[:12]}...{key[-6:]}) in {repo}")
+                except UnicodeEncodeError:
+                    print(f"\nFound {name} key in {repo}")
+                valid = self.check_api_key(key, name)
+                status = "Valid" if valid else "Not Valid"
+                try:
+                    print(f"  -> {name}: {status}")
+                except UnicodeEncodeError:
+                    pass
+                if self.db:
+                    self.db.add_activity(f"{name}: {status}", "info")
+                entry = {
+                    "file_url": file_url,
+                    "repo": repo,
+                    "owner": owner,
+                    "repo_url": repo_url,
+                    "default_branch": default_branch,
+                    "path": path,
+                    "type": name,
+                    "key": key,
+                    "valid": valid
+                }
+                found.append(entry)
+                self.existing_keys.add(key)
+                if self.db:
+                    self.db.add_key(
+                        key=key, service=name, valid=valid,
+                        file_url=file_url, repo=repo,
+                        owner=owner, repo_url=repo_url, path=path,
+                    )
+
+    def scan_results(self, results: Dict) -> List[Dict]:
+        found = []
+        items = results.get("items", [])
+
+        to_fetch = []
+        for item in items:
+            if self.stop_event and self.stop_event.is_set():
+                return found
+            path = item.get("path", "")
+            if self._is_example_file(path):
+                print(f"  Skipped example file: {path}")
+                continue
+            to_fetch.append(item)
+
+        if not to_fetch:
+            return found
+
+        with ThreadPoolExecutor(max_workers=10) as pool:
+            fut_map = {pool.submit(self.get_file_content, item): item for item in to_fetch}
+            for future in as_completed(fut_map):
+                if self.stop_event and self.stop_event.is_set():
+                    break
+                item = fut_map[future]
+                try:
+                    content = future.result()
+                except Exception:
+                    content = ''
+                self._process_item_result(item, content, found)
+
         return found
 
     def save_results(self, results: List[Dict]) -> None:
@@ -532,7 +573,7 @@ class Scanner:
                 page += 1
                 if self.db:
                     self.db.save_progress(qi, page, query)
-                for _ in range(3):
+                for _ in range(1):
                     if self.stop_event and self.stop_event.is_set():
                         print("Scan stopped by user.")
                         if self.db:
@@ -543,7 +584,7 @@ class Scanner:
 
         print("Scan complete. Exiting.")
         if self.db:
-            self.db.clear_progress()
+            self.db.save_progress(-1, 0, "SCAN_COMPLETE")
 
 
 def start_dashboard(host="127.0.0.1", port=5000, db_path="found_keys.db", tokens=None):
@@ -552,7 +593,7 @@ def start_dashboard(host="127.0.0.1", port=5000, db_path="found_keys.db", tokens
     db = Database(db_path)
     db.initialize()
 
-    _run_dash(db, host=host, port=port)
+    _run_dash(db, host=host, port=port, tokens=tokens)
 
 
 if __name__ == "__main__":
@@ -599,4 +640,5 @@ if __name__ == "__main__":
         except KeyboardInterrupt:
             print("\nStopped by user.")
     else:
-        start_dashboard(host=args.host, port=args.port, db_path=args.output)
+        token_list = [t.strip() for t in args.tokens.split(",") if t.strip()] if args.tokens else None
+        start_dashboard(host=args.host, port=args.port, db_path=args.output, tokens=token_list)
