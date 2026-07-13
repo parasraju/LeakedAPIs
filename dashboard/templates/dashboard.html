@@ -3,150 +3,196 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>API Instructor Dashboard</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link href="/static/style.css" rel="stylesheet">
+  <title>API Instructor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            ink: '#171717',
+            'canvas-soft': '#fafafa',
+            'canvas-soft-2': '#f5f5f5',
+            hairline: '#ebebeb',
+            'hairline-strong': '#a1a1a1',
+            mute: '#888888',
+            body: '#4d4d4d',
+            'link-blue': '#0070f3',
+            'success-green': '#0070f3',
+            'error-red': '#ee0000',
+            'warning-amber': '#f5a623',
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+            mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+          },
+          boxShadow: {
+            'vercel': '0px 1px 1px rgba(0,0,0,0.05), 0px 2px 2px rgba(0,0,0,0.10), 0 0 0 1px rgba(0,0,0,0.06)',
+            'vercel-sm': '0px 1px 1px rgba(0,0,0,0.03), 0px 1px 2px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04)',
+            'vercel-lg': '0px 2px 2px rgba(0,0,0,0.06), 0px 8px 16px -4px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.06)',
+          },
+        },
+      },
+    }
+  </script>
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #fafafa; font-family: Inter, system-ui, -apple-system, sans-serif; }
+    .scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+    .scroll::-webkit-scrollbar-track { background: transparent; }
+    .scroll::-webkit-scrollbar-thumb { background: #d4d4d4; border-radius: 3px; }
+    .scroll::-webkit-scrollbar-thumb:hover { background: #a1a1a1; }
+    @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+    .live-dot { animation: pulse-dot 2s ease-in-out infinite; }
+  </style>
 </head>
 <body>
-  <nav class="navbar navbar-dark bg-dark px-3">
-    <span class="navbar-brand mb-0 h1">API Instructor</span>
-    <div class="d-flex align-items-center gap-3">
-      <span id="scan-status" class="text-light small">Idle</span>
-      <span id="tokens-remaining" class="text-white small"></span>
-      <span class="badge bg-success">Live</span>
-    </div>
-  </nav>
 
-  <div class="container-fluid py-3">
-    <div class="card border-primary mb-4" id="scan-card">
-      <div class="card-header bg-primary text-white py-2 d-flex justify-content-between align-items-center">
-        <strong>Start a Scan</strong>
-        <div>
-          <button id="stop-btn" class="btn btn-sm btn-outline-light" onclick="stopScan()" disabled>Stop Scan</button>
-        </div>
+  <!-- Sidebar -->
+  <div class="fixed inset-y-0 left-0 w-56 bg-ink z-20 flex flex-col">
+    <div class="flex items-center gap-2 px-4 h-14 border-b border-white/10">
+      <div class="w-2 h-2 rounded-full bg-emerald-400 live-dot"></div>
+      <span class="text-white font-semibold text-sm tracking-tight">API Instructor</span>
+    </div>
+    <div class="flex-1 px-3 py-4 space-y-1">
+      <div class="text-white/40 text-[11px] font-mono uppercase tracking-wider px-2 pb-2">Status</div>
+      <div class="flex items-center gap-2 px-2 py-1.5">
+        <div id="scan-status-dot" class="w-1.5 h-1.5 rounded-full bg-white/30"></div>
+        <span id="scan-status" class="text-white/70 text-sm">Idle</span>
       </div>
-      <div class="card-body py-3">
-        <div class="row g-2 align-items-end">
-          <div class="col-md-5">
-            <label class="form-label small mb-1 fw-semibold">GitHub Token(s)</label>
-            <input type="text" id="scan-tokens" class="form-control form-control-sm"
-                   placeholder="github_pat_xxx, github_pat_yyy (comma-separated)">
-            <div class="mt-1 small text-muted">Separate multiple tokens with commas</div>
-          </div>
-          <div class="col-md-2">
-            <label class="form-label small mb-1 fw-semibold">Max Pages</label>
-            <input type="number" id="scan-pages" class="form-control form-control-sm" value="10" min="1" max="100">
-          </div>
-          <div class="col-md-2">
-            <label class="form-label small mb-1 fw-semibold">Delay (s)</label>
-            <input type="number" id="scan-delay" class="form-control form-control-sm" value="5" min="1" step="0.5">
-          </div>
-          <div class="col-md-3 d-grid">
-            <button id="scan-btn" class="btn btn-primary" onclick="startScan()">Start Scan</button>
-          </div>
-        </div>
-        <div id="scan-progress" class="mt-2 small d-none">
-          <span id="scan-progress-text"></span>
-        </div>
+      <div class="text-white/40 text-[11px] font-mono uppercase tracking-wider px-2 pt-3 pb-2">Tokens</div>
+      <div class="px-2 py-1.5">
+        <span id="tokens-remaining" class="text-white/50 text-xs font-mono"></span>
       </div>
+    </div>
+    <div class="px-4 py-3 border-t border-white/10">
+      <span class="text-white/30 text-[11px] font-mono">v1.0</span>
     </div>
   </div>
 
-  <div class="container-fluid py-4">
-    <div class="row g-3 mb-4" id="stats-row">
-      <div class="col-md-3">
-        <div class="card stat-card total">
-          <div class="card-body">
-            <h6 class="card-title">Total Keys</h6>
-            <h2 class="mb-0" id="stat-total">0</h2>
-          </div>
-        </div>
-      </div>
-      <div class="col-md-3">
-        <div class="card stat-card valid">
-          <div class="card-body">
-            <h6 class="card-title">Valid</h6>
-            <h2 class="mb-0" id="stat-valid">0</h2>
-          </div>
-        </div>
-      </div>
-      <div class="col-md-3">
-        <div class="card stat-card invalid">
-          <div class="card-body">
-            <h6 class="card-title">Invalid</h6>
-            <h2 class="mb-0" id="stat-invalid">0</h2>
-          </div>
-        </div>
-      </div>
-      <div class="col-md-3">
-        <div class="card stat-card services">
-          <div class="card-body">
-            <h6 class="card-title">Services</h6>
-            <h2 class="mb-0" id="stat-services">0</h2>
-          </div>
-        </div>
+  <!-- Main -->
+  <div class="ml-56 min-h-screen">
+    <!-- Top bar -->
+    <div class="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-hairline h-14 flex items-center px-6 gap-3">
+      <span class="text-sm font-medium text-ink">Dashboard</span>
+      <span class="text-mute text-xs font-mono">/</span>
+      <span id="scan-progress-text" class="text-xs text-body font-mono"></span>
+      <div class="ml-auto flex items-center gap-2">
+        <span class="bg-emerald-50 text-emerald-700 text-[11px] font-mono px-2 py-0.5 rounded-full border border-emerald-200">Live</span>
       </div>
     </div>
 
-    <div class="row g-3">
-      <div class="col-lg-8">
-        <div class="card">
-          <div class="card-header d-flex justify-content-between align-items-center">
-            <span>Keys</span>
-            <div>
-              <input type="text" id="key-search" class="form-control form-control-sm d-inline-block w-auto" placeholder="Search keys..." oninput="filterKeys()">
-              <select id="service-filter" class="form-select form-select-sm d-inline-block w-auto ms-1" onchange="filterKeys()">
-                <option value="all">All Services</option>
-              </select>
-              <select id="valid-filter" class="form-select form-select-sm d-inline-block w-auto ms-1" onchange="filterKeys()">
-                <option value="all">All Status</option>
-                <option value="valid">Valid</option>
-                <option value="invalid">Invalid</option>
-              </select>
-              <button class="btn btn-sm btn-outline-secondary ms-1" onclick="revalidateAll()" title="Re-check all keys">Re-check</button>
+    <div class="p-6 max-w-7xl mx-auto space-y-6">
+      <!-- Scan Panel -->
+      <div class="bg-white rounded-lg shadow-vercel overflow-hidden">
+        <div class="px-5 py-3 border-b border-hairline flex items-center justify-between">
+          <h2 class="text-sm font-medium text-ink">New Scan</h2>
+          <button id="stop-btn" onclick="stopScan()" disabled class="text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded-full px-3 py-1 hover:bg-red-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">Stop</button>
+        </div>
+        <div class="p-5">
+          <div class="grid grid-cols-12 gap-3 items-end">
+            <div class="col-span-5">
+              <label class="text-[11px] font-medium text-body uppercase tracking-wider mb-1.5 block">GitHub Token(s)</label>
+              <input type="text" id="scan-tokens" class="w-full h-8 px-2.5 text-sm border border-hairline rounded-md focus:outline-none focus:border-ink focus:ring-0 transition-colors" placeholder="github_pat_xxx, github_pat_yyy">
+              <p class="text-[11px] text-mute mt-1">Separate multiple tokens with commas</p>
             </div>
-          </div>
-          <div class="card-body p-0">
-            <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
-              <table class="table table-sm table-hover mb-0" id="keys-table">
-                <thead class="table-dark sticky-top">
-                  <tr>
-                    <th>Key</th>
-                    <th>Service</th>
-                    <th>Status</th>
-                    <th>Repo</th>
-                    <th>Found</th>
-                    <th>Report</th>
-                  </tr>
-                </thead>
-                <tbody id="keys-body">
-                  <tr><td colspan="6" class="text-center text-muted py-4">Loading...</td></tr>
-                </tbody>
-              </table>
+            <div class="col-span-2">
+              <label class="text-[11px] font-medium text-body uppercase tracking-wider mb-1.5 block">Pages</label>
+              <input type="number" id="scan-pages" class="w-full h-8 px-2.5 text-sm border border-hairline rounded-md focus:outline-none focus:border-ink" value="10" min="1" max="100">
+            </div>
+            <div class="col-span-2">
+              <label class="text-[11px] font-medium text-body uppercase tracking-wider mb-1.5 block">Delay (s)</label>
+              <input type="number" id="scan-delay" class="w-full h-8 px-2.5 text-sm border border-hairline rounded-md focus:outline-none focus:border-ink" value="5" min="1" step="0.5">
+            </div>
+            <div class="col-span-3">
+              <button id="scan-btn" onclick="startScan()" class="w-full h-8 bg-ink text-white text-sm font-medium rounded-full hover:bg-ink/90 transition-colors">Start Scan</button>
             </div>
           </div>
         </div>
       </div>
 
-      <div class="col-lg-4">
-        <div class="card">
-          <div class="card-header d-flex justify-content-between align-items-center">
-            <span>Activity</span>
-            <span id="activity-count" class="badge bg-secondary">0</span>
+      <!-- Stats -->
+      <div class="grid grid-cols-4 gap-4">
+        <div class="bg-white rounded-lg shadow-vercel-sm p-4">
+          <p class="text-[11px] font-mono text-mute uppercase tracking-wider">Total Keys</p>
+          <p id="stat-total" class="text-2xl font-semibold text-ink mt-1 tracking-tight">0</p>
+        </div>
+        <div class="bg-white rounded-lg shadow-vercel-sm p-4">
+          <p class="text-[11px] font-mono text-mute uppercase tracking-wider">Valid</p>
+          <p id="stat-valid" class="text-2xl font-semibold text-emerald-600 mt-1 tracking-tight">0</p>
+        </div>
+        <div class="bg-white rounded-lg shadow-vercel-sm p-4">
+          <p class="text-[11px] font-mono text-mute uppercase tracking-wider">Invalid</p>
+          <p id="stat-invalid" class="text-2xl font-semibold text-red-500 mt-1 tracking-tight">0</p>
+        </div>
+        <div class="bg-white rounded-lg shadow-vercel-sm p-4">
+          <p class="text-[11px] font-mono text-mute uppercase tracking-wider">Services</p>
+          <p id="stat-services" class="text-2xl font-semibold text-ink mt-1 tracking-tight">0</p>
+        </div>
+      </div>
+
+      <!-- Keys + Activity -->
+      <div class="grid grid-cols-12 gap-6">
+        <!-- Keys -->
+        <div class="col-span-8 bg-white rounded-lg shadow-vercel overflow-hidden">
+          <div class="px-5 py-3 border-b border-hairline flex items-center gap-2 flex-wrap">
+            <span class="text-sm font-medium text-ink">Keys</span>
+            <input type="text" id="key-search" class="ml-auto h-7 px-2 text-xs border border-hairline rounded-md w-36 focus:outline-none focus:border-ink" placeholder="Search..." oninput="filterKeys()">
+            <select id="service-filter" class="h-7 px-2 text-xs border border-hairline rounded-md focus:outline-none focus:border-ink" onchange="filterKeys()">
+              <option value="all">All Services</option>
+            </select>
+            <select id="valid-filter" class="h-7 px-2 text-xs border border-hairline rounded-md focus:outline-none focus:border-ink" onchange="filterKeys()">
+              <option value="all">All Status</option>
+              <option value="valid">Valid</option>
+              <option value="invalid">Invalid</option>
+            </select>
+            <button onclick="revalidateAll()" class="text-xs font-medium text-body bg-canvas-soft border border-hairline rounded-full px-2.5 py-1 hover:bg-canvas-soft-2 transition-colors">Re-check</button>
           </div>
-          <div class="card-body p-0" style="max-height: 600px; overflow-y: auto;">
-            <ul class="list-group list-group-flush" id="activity-list">
-              <li class="list-group-item text-muted text-center">Waiting for activity...</li>
-            </ul>
+          <div class="overflow-x-auto scroll" style="max-height: 600px;">
+            <table class="w-full text-sm">
+              <thead class="bg-canvas-soft sticky top-0">
+                <tr class="text-left text-[11px] font-mono text-mute uppercase tracking-wider">
+                  <th class="px-4 py-2.5 font-medium">Key</th>
+                  <th class="px-4 py-2.5 font-medium">Service</th>
+                  <th class="px-4 py-2.5 font-medium">Status</th>
+                  <th class="px-4 py-2.5 font-medium">Repo</th>
+                  <th class="px-4 py-2.5 font-medium">Found</th>
+                  <th class="px-4 py-2.5 font-medium">Report</th>
+                </tr>
+              </thead>
+              <tbody id="keys-body" class="divide-y divide-hairline">
+                <tr><td colspan="6" class="text-center text-mute text-xs py-8">Loading...</td></tr>
+              </tbody>
+            </table>
           </div>
         </div>
 
-        <div class="card mt-3">
-          <div class="card-header">Services Breakdown</div>
-          <div class="card-body p-0">
-            <ul class="list-group list-group-flush" id="services-list">
-              <li class="list-group-item text-muted">No data yet</li>
-            </ul>
+        <!-- Activity -->
+        <div class="col-span-4 space-y-4">
+          <div class="bg-white rounded-lg shadow-vercel overflow-hidden">
+            <div class="px-4 py-3 border-b border-hairline flex items-center justify-between">
+              <span class="text-sm font-medium text-ink">Activity</span>
+              <span id="activity-count" class="text-[11px] font-mono text-mute bg-canvas-soft rounded-full px-2 py-0.5">0</span>
+            </div>
+            <div class="scroll" style="max-height: 500px; overflow-y: auto;">
+              <ul id="activity-list" class="divide-y divide-hairline">
+                <li class="text-center text-mute text-xs py-6">Waiting for activity...</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-lg shadow-vercel overflow-hidden">
+            <div class="px-4 py-3 border-b border-hairline">
+              <span class="text-sm font-medium text-ink">Services Breakdown</span>
+            </div>
+            <div class="divide-y divide-hairline">
+              <ul id="services-list" class="divide-y divide-hairline">
+                <li class="text-center text-mute text-xs py-6">No data yet</li>
+              </ul>
+            </div>
           </div>
         </div>
       </div>
@@ -158,10 +204,7 @@
     let allServices = [];
 
     async function fetchJSON(url) {
-      try {
-        const r = await fetch(url);
-        return await r.json();
-      } catch { return null; }
+      try { const r = await fetch(url); return await r.json(); } catch { return null; }
     }
 
     async function updateStats() {
@@ -170,8 +213,7 @@
       document.getElementById('stat-total').textContent = s.total;
       document.getElementById('stat-valid').textContent = s.valid;
       document.getElementById('stat-invalid').textContent = s.invalid;
-      const svcCount = s.services ? s.services.length : 0;
-      document.getElementById('stat-services').textContent = svcCount;
+      document.getElementById('stat-services').textContent = s.services ? s.services.length : 0;
     }
 
     async function updateKeys() {
@@ -193,31 +235,30 @@
         if (service !== 'all' && k.service !== service) return false;
         if (validFilter === 'valid' && !k.valid) return false;
         if (validFilter === 'invalid' && k.valid) return false;
-        if (search && !k.key.toLowerCase().includes(search) &&
-            !k.repo?.toLowerCase().includes(search)) return false;
+        if (search && !k.key.toLowerCase().includes(search) && !k.repo?.toLowerCase().includes(search)) return false;
         return true;
       });
       const tbody = document.getElementById('keys-body');
       if (filtered.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No keys found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-mute text-xs py-6">No keys found</td></tr>';
         return;
       }
       tbody.innerHTML = filtered.map(k => {
         const masked = k.key.length > 16 ? k.key.slice(0, 12) + '...' + k.key.slice(-6) : k.key;
         const badge = k.valid
-          ? '<span class="badge bg-success">Valid</span>'
-          : '<span class="badge bg-danger">Invalid</span>';
+          ? '<span class="text-[11px] font-mono font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">Valid</span>'
+          : '<span class="text-[11px] font-mono font-medium text-red-600 bg-red-50 border border-red-200 rounded-full px-2 py-0.5">Invalid</span>';
         const repoLink = k.repo_url
-          ? `<a href="${k.repo_url}" target="_blank" title="${k.repo}">${(k.repo || '').split('/')[1] || k.repo}</a>`
+          ? `<a href="${k.repo_url}" target="_blank" class="text-link-blue hover:underline" title="${k.repo}">${(k.repo || '').split('/')[1] || k.repo}</a>`
           : k.repo || '-';
         const time = k.last_seen ? new Date(k.last_seen + 'Z').toLocaleString() : '-';
-        return `<tr>
-          <td><code title="${k.key}">${masked}</code></td>
-          <td><span class="badge bg-secondary">${k.service}</span></td>
-          <td>${badge}</td>
-          <td>${repoLink}</td>
-          <td class="text-muted small">${time}</td>
-          <td><button class="btn btn-sm btn-outline-warning report-btn" data-owner="${k.owner || ''}" data-repo="${(k.repo || '').split('/')[1] || ''}" data-key="${k.key}" data-service="${k.service}" data-fileurl="${k.file_url || ''}" data-path="${k.path || ''}" onclick="reportKey(this)" ${k.owner ? '' : 'disabled'} title="Create GitHub issue">Report</button></td>
+        return `<tr class="hover:bg-canvas-soft/50 transition-colors">
+          <td class="px-4 py-2.5"><code class="font-mono text-xs text-ink" title="${k.key}">${masked}</code></td>
+          <td class="px-4 py-2.5"><span class="text-[11px] font-mono text-mute bg-canvas-soft rounded-full px-2 py-0.5 border border-hairline">${k.service}</span></td>
+          <td class="px-4 py-2.5">${badge}</td>
+          <td class="px-4 py-2.5 text-xs">${repoLink}</td>
+          <td class="px-4 py-2.5 text-xs text-mute font-mono">${time}</td>
+          <td class="px-4 py-2.5"><button class="text-[11px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 hover:bg-amber-100 transition-colors report-btn" data-owner="${k.owner || ''}" data-repo="${(k.repo || '').split('/')[1] || ''}" data-key="${k.key}" data-service="${k.service}" data-fileurl="${k.file_url || ''}" data-path="${k.path || ''}" onclick="reportKey(this)" ${k.owner ? '' : 'disabled'}>Report</button></td>
         </tr>`;
       }).join('');
     }
@@ -229,10 +270,8 @@
       const list = document.getElementById('activity-list');
       list.innerHTML = data.map(a => {
         const time = new Date(a.created_at + 'Z').toLocaleTimeString();
-        let cls = 'list-group-item';
-        if (a.level === 'error') cls += ' list-group-item-danger';
-        else if (a.level === 'warning') cls += ' list-group-item-warning';
-        return `<li class="${cls} py-1 small"><span class="text-muted me-2">${time}</span>${a.message}</li>`;
+        const colors = a.level === 'error' ? 'text-red-600 bg-red-50' : a.level === 'warning' ? 'text-amber-700 bg-amber-50' : 'text-body';
+        return `<li class="px-4 py-2 text-xs ${colors} flex gap-2"><span class="text-mute font-mono shrink-0">${time}</span><span>${a.message}</span></li>`;
       }).join('');
     }
 
@@ -243,9 +282,9 @@
       const total = s.services.reduce((a, b) => a + b.cnt, 0);
       list.innerHTML = s.services.map(svc => {
         const pct = total > 0 ? (svc.cnt / total * 100).toFixed(1) : 0;
-        return `<li class="list-group-item d-flex justify-content-between align-items-center">
-          ${svc.service}
-          <span class="badge bg-primary rounded-pill">${svc.cnt} (${pct}%)</span>
+        return `<li class="flex items-center justify-between px-4 py-2.5 text-sm">
+          <span class="text-body">${svc.service}</span>
+          <span class="text-[11px] font-mono text-mute bg-canvas-soft rounded-full px-2 py-0.5 border border-hairline">${svc.cnt} (${pct}%)</span>
         </li>`;
       }).join('');
     }
@@ -254,31 +293,32 @@
       const s = await fetchJSON('/api/scan/status');
       if (!s) return;
       const statusEl = document.getElementById('scan-status');
+      const dotEl = document.getElementById('scan-status-dot');
       const btn = document.getElementById('scan-btn');
       const stopBtn = document.getElementById('stop-btn');
-      const progress = document.getElementById('scan-progress');
       const text = document.getElementById('scan-progress-text');
       const tokensEl = document.getElementById('tokens-remaining');
       tokensEl.textContent = s.tokens_remaining ? 'Tokens: ' + s.tokens_remaining + ' left' : '';
       if (s.running) {
         statusEl.textContent = 'Scanning...';
-        statusEl.className = 'text-warning small fw-bold';
+        dotEl.className = 'w-1.5 h-1.5 rounded-full bg-amber-400 live-dot';
         btn.disabled = true;
+        btn.className = 'w-full h-8 bg-mute text-white text-sm font-medium rounded-full cursor-not-allowed';
         stopBtn.disabled = false;
-        progress.classList.remove('d-none');
         text.textContent = s.progress + (s.page ? ` (page ${s.page})` : '');
       } else {
         statusEl.textContent = 'Idle';
-        statusEl.className = 'text-light small';
+        dotEl.className = 'w-1.5 h-1.5 rounded-full bg-white/30';
         btn.disabled = false;
+        btn.className = 'w-full h-8 bg-ink text-white text-sm font-medium rounded-full hover:bg-ink/90 transition-colors';
         stopBtn.disabled = true;
-        progress.classList.add('d-none');
+        text.textContent = '';
       }
     }
 
     async function startScan() {
       const tokens = document.getElementById('scan-tokens').value.trim();
-      if (!tokens) { alert('Enter your GitHub token(s) in the field above and click Start Scan'); return; }
+      if (!tokens) { alert('Enter your GitHub token(s)'); return; }
       const tokenList = tokens.split(',').map(t => t.trim()).filter(Boolean);
       const maxPages = parseInt(document.getElementById('scan-pages').value) || 10;
       const delay = parseFloat(document.getElementById('scan-delay').value) || 5;
@@ -295,30 +335,22 @@
           const err = await r.json();
           alert(err.error || 'Failed to start scan');
           btn.disabled = false;
-          btn.textContent = 'Start Scan';
         }
-      } catch(e) {
-        alert('Network error');
-        btn.disabled = false;
-        btn.textContent = 'Start Scan';
-      }
+      } catch(e) { alert('Network error'); }
+      btn.disabled = false;
+      btn.textContent = 'Start Scan';
     }
 
     async function stopScan() {
-      try {
-        document.getElementById('stop-btn').disabled = true;
-        await fetch('/api/scan/stop', { method: 'POST' });
-      } catch(e) {}
+      try { document.getElementById('stop-btn').disabled = true; await fetch('/api/scan/stop', { method: 'POST' }); } catch(e) {}
     }
 
     async function revalidateAll() {
-      if (!confirm('Re-check all keys against their APIs? This may take a while.')) return;
+      if (!confirm('Re-check all keys against their APIs?')) return;
       const btn = event.target;
-      btn.disabled = true;
-      btn.textContent = 'Checking...';
+      btn.disabled = true; btn.textContent = '...';
       await fetch('/api/keys/revalidate', { method: 'POST' });
-      btn.disabled = false;
-      btn.textContent = 'Re-check';
+      btn.disabled = false; btn.textContent = 'Re-check';
     }
 
     async function reportKey(btn) {
@@ -328,11 +360,10 @@
       const service = btn.dataset.service;
       const fileUrl = btn.dataset.fileurl;
       const path = btn.dataset.path;
-      if (!owner || !repo) { alert('Missing repository info'); return; }
-      const token = prompt('Enter your GitHub token (with public_repo scope) to create an issue:');
+      if (!owner || !repo) { alert('Missing repo info'); return; }
+      const token = prompt('Enter GitHub token (public_repo scope):');
       if (!token) return;
-      btn.disabled = true;
-      btn.textContent = '...';
+      btn.disabled = true; btn.textContent = '...';
       try {
         const r = await fetch('/api/keys/report', {
           method: 'POST',
@@ -342,23 +373,15 @@
         const text = await r.text();
         let data;
         try { data = JSON.parse(text); } catch { data = {error: text}; }
-        if (data.url) {
-          alert('Issue created: ' + data.url);
-          window.open(data.url, '_blank');
-        } else {
-          alert('Error: ' + (data.error || (r.status + ' ' + text.slice(0, 200))));
-        }
-      } catch(e) {
-        alert('Request failed: ' + e.message);
-      }
-      btn.disabled = false;
-      btn.textContent = 'Report';
+        if (data.url) { alert('Issue created: ' + data.url); window.open(data.url, '_blank'); }
+        else { alert('Error: ' + (data.error || text.slice(0, 200))); }
+      } catch(e) { alert('Request failed: ' + e.message); }
+      btn.disabled = false; btn.textContent = 'Report';
     }
 
     async function refresh() {
       await Promise.all([updateStats(), updateKeys(), updateActivity(), updateServices(), updateScanStatus()]);
     }
-
     setInterval(refresh, 3000);
     refresh();
   </script>
