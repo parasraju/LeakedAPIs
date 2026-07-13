@@ -307,31 +307,30 @@
     }
 
     async function updateScanStatus() {
-      const s = await fetchJSON('/api/scan/status');
-      if (!s) return;
-      const statusEl = document.getElementById('scan-status');
-      const dotEl = document.getElementById('scan-status-dot');
-      const btn = document.getElementById('scan-btn');
-      const stopBtn = document.getElementById('stop-btn');
-      const text = document.getElementById('scan-progress-text');
-      const tokensEl = document.getElementById('tokens-remaining');
-      if (tokensEl) tokensEl.textContent = s.tokens_remaining || '';
-      if (s.running) {
-        statusEl.textContent = 'Scanning...';
-        dotEl.className = 'w-1.5 h-1.5 rounded-full bg-amber-400 live-dot';
-        btn.disabled = true;
-        btn.textContent = 'Scanning';
-        btn.className = 'w-full h-8 bg-mute text-white text-sm font-medium rounded-full cursor-not-allowed';
-        stopBtn.disabled = false;
-        text.textContent = s.progress + (s.page ? ` (page ${s.page})` : '');
-      } else {
-        statusEl.textContent = 'Idle';
-        dotEl.className = 'w-1.5 h-1.5 rounded-full bg-white/30';
-        btn.disabled = false;
-        btn.className = 'w-full h-8 bg-ink text-white text-sm font-medium rounded-full hover:bg-ink/90 transition-colors';
-        stopBtn.disabled = true;
-        text.textContent = '';
-      }
+      try {
+        const s = await fetchJSON('/api/scan/status');
+        if (!s) return;
+        const statusEl = document.getElementById('scan-status');
+        const dotEl = document.getElementById('scan-status-dot');
+        const btn = document.getElementById('scan-btn');
+        const stopBtn = document.getElementById('stop-btn');
+        const text = document.getElementById('scan-progress-text');
+        const tokensEl = document.getElementById('tokens-remaining');
+        if (tokensEl) tokensEl.textContent = s.tokens_remaining || '';
+        if (s.running) {
+          if (statusEl) statusEl.textContent = 'Scanning...';
+          if (dotEl) dotEl.className = 'w-1.5 h-1.5 rounded-full bg-amber-400 live-dot';
+          if (btn) { btn.disabled = true; btn.textContent = 'Scanning'; btn.className = 'w-full h-8 bg-mute text-white text-sm font-medium rounded-full cursor-not-allowed'; }
+          if (stopBtn) { stopBtn.disabled = false; stopBtn.textContent = 'Stop'; }
+          if (text) text.textContent = s.progress + (s.page ? ` (page ${s.page})` : '');
+        } else {
+          if (statusEl) statusEl.textContent = 'Idle';
+          if (dotEl) dotEl.className = 'w-1.5 h-1.5 rounded-full bg-white/30';
+          if (btn) { btn.disabled = false; btn.textContent = 'Start Scan'; btn.className = 'w-full h-8 bg-ink text-white text-sm font-medium rounded-full hover:bg-ink/90 transition-colors'; }
+          if (stopBtn) { stopBtn.disabled = true; stopBtn.textContent = 'Stop'; }
+          if (text) text.textContent = '';
+        }
+      } catch(e) { console.error('updateScanStatus:', e); }
     }
 
     async function startScan() {
@@ -347,23 +346,36 @@
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({tokens: tokenList})
         });
-        if (!r.ok) {
+        if (r.ok) {
+          btn.textContent = 'Scanning';
+        } else {
           const err = await r.json();
           alert(err.error || 'Failed');
           btn.disabled = false;
           btn.textContent = 'Start Scan';
         }
-      } catch(e) { alert('Network error');
+      } catch(e) {
+        alert('Network error');
         btn.disabled = false;
-        btn.textContent = 'Start Scan'; }
+        btn.textContent = 'Start Scan';
+      }
     }
 
     async function stopScan() {
       const btn = document.getElementById('stop-btn');
       btn.disabled = true;
       btn.textContent = 'Stopping...';
-      try { await fetch('/api/scan/stop', { method: 'POST' }); } catch(e) {}
-      setTimeout(() => { btn.textContent = 'Stop'; }, 3000);
+      try {
+        const r = await fetch('/api/scan/stop', { method: 'POST' });
+        if (r.ok) {
+          for (let i = 0; i < 15; i++) {
+            await new Promise(r => setTimeout(r, 1000));
+            const s = await fetchJSON('/api/scan/status');
+            if (s && !s.running) { btn.textContent = 'Stop'; return; }
+          }
+        }
+      } catch(e) {}
+      btn.textContent = 'Stop';
     }
 
     async function revalidateAll() {

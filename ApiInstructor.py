@@ -391,6 +391,8 @@ class Scanner:
         urls.append(f"https://raw.githubusercontent.com/{repo}/{branch}/{path}")
 
         for url in urls:
+            if self.stop_event and self.stop_event.is_set():
+                return ''
             try:
                 response = requests.get(url, timeout=10)
                 if response.status_code == 200:
@@ -403,6 +405,8 @@ class Scanner:
         """Scan GitHub search results for API keys"""
         found = []
         for item in results.get("items", []):
+            if self.stop_event and self.stop_event.is_set():
+                break
             file_url = item.get("html_url")
             repo = item.get("repository", {}).get("full_name")
             owner = item.get("repository", {}).get("owner", {}).get("login")
@@ -528,7 +532,14 @@ class Scanner:
                 page += 1
                 if self.db:
                     self.db.save_progress(qi, page, query)
-                time.sleep(3)
+                for _ in range(3):
+                    if self.stop_event and self.stop_event.is_set():
+                        print("Scan stopped by user.")
+                        if self.db:
+                            self.db.add_activity("Scan stopped by user", "warning")
+                            self.db.save_progress(qi, page, query)
+                        return
+                    time.sleep(1)
 
         print("Scan complete. Exiting.")
         if self.db:
