@@ -13,6 +13,8 @@ _db = None
 _scanner_thread = None
 _scanner_status = {"running": False, "progress": "", "query": "", "page": 0, "tokens_remaining": ""}
 _stop_event = None
+_scan_tokens = None
+_rate_cache = {"core": {}, "search": {}, "updated": 0}
 
 
 @app.route("/")
@@ -61,6 +63,28 @@ def scan_status():
     return jsonify(_scanner_status)
 
 
+@app.route("/api/github/rate_limit")
+def rate_limit():
+    now = time.time()
+    if now - _rate_cache["updated"] < 60 and _rate_cache.get("core"):
+        return jsonify(_rate_cache)
+    token = _scan_tokens[0] if _scan_tokens else None
+    if not token:
+        return jsonify({"core": {}, "search": {}})
+    try:
+        r = requests.get("https://api.github.com/rate_limit",
+                         headers={"Authorization": f"token {token}"}, timeout=5)
+        if r.status_code == 200:
+            d = r.json().get("resources", {})
+            c, s = d.get("core", {}), d.get("search", {})
+            _rate_cache.update(core={"remaining": c.get("remaining"), "limit": c.get("limit")},
+                               search={"remaining": s.get("remaining"), "limit": s.get("limit")},
+                               updated=now)
+    except Exception:
+        pass
+    return jsonify(_rate_cache)
+
+
 @app.route("/api/scan/start", methods=["POST"])
 def scan_start():
     global _scanner_thread, _scanner_status, _stop_event, _scan_tokens
@@ -77,6 +101,7 @@ def scan_start():
     _stop_event = threading.Event()
     _scanner_status = {"running": True, "progress": "Starting...",
                        "query": "", "page": 0, "tokens_remaining": ""}
+    _db.clear_progress()
 
     def run_scan():
         global _scanner_status

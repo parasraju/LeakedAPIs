@@ -64,8 +64,15 @@
         <span id="scan-status" class="text-white/70 text-sm">Idle</span>
       </div>
       <div class="text-white/40 text-[11px] font-mono uppercase tracking-wider px-2 pt-3 pb-2">Rate Limit</div>
-      <div class="px-2 py-1.5">
-        <span id="tokens-remaining" class="text-white/60 text-xs font-mono"></span>
+      <div class="px-2 py-1.5 space-y-1">
+        <div class="flex justify-between text-[11px]">
+          <span class="text-white/40">Core</span>
+          <span id="rate-core" class="text-white/70 font-mono">--</span>
+        </div>
+        <div class="flex justify-between text-[11px]">
+          <span class="text-white/40">Search</span>
+          <span id="rate-search" class="text-white/70 font-mono">--</span>
+        </div>
       </div>
     </div>
     <div class="px-4 py-3 border-t border-white/10">
@@ -289,6 +296,15 @@
       }).join('');
     }
 
+    async function updateRateLimit() {
+      const r = await fetchJSON('/api/github/rate_limit');
+      if (!r) return;
+      document.getElementById('rate-core').textContent =
+        r.core?.remaining !== undefined ? r.core.remaining + '/' + r.core.limit : '--';
+      document.getElementById('rate-search').textContent =
+        r.search?.remaining !== undefined ? r.search.remaining + '/' + r.search.limit : '--';
+    }
+
     async function updateScanStatus() {
       const s = await fetchJSON('/api/scan/status');
       if (!s) return;
@@ -380,7 +396,7 @@
     }
 
     async function refresh() {
-      await Promise.all([updateStats(), updateKeys(), updateActivity(), updateServices(), updateScanStatus()]);
+      await Promise.all([updateStats(), updateKeys(), updateActivity(), updateServices(), updateScanStatus(), updateRateLimit()]);
     }
     setInterval(refresh, 3000);
     refresh();
