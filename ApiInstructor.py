@@ -45,6 +45,7 @@ class Scanner:
             "AWSKey": re.compile(r"AKIA[0-9A-Z]{16}"),
         }
         self.queries = [
+            # ---- CODE SEARCH ----
             "sk- AND \"sk-\" extension:env",
             "sk- AND \"sk-\" extension:json",
             "sk- AND \"sk-\" extension:yaml",
@@ -98,8 +99,76 @@ class Scanner:
             "secret in:filename .env.local",
             "token in:filename .env",
             "token in:filename .env.local",
+            # .yml mirrors of .yaml queries
+            "sk- AND \"sk-\" extension:yml",
+            "hf_ AND \"hf_\" extension:yml",
+            "sk-ant- AND \"sk-ant-\" extension:yml",
+            "sk_live_ extension:yml",
+            "rk_live_ extension:yml",
+            "ghp_ extension:yml",
+            "gho_ extension:yml",
+            "ghs_ extension:yml",
+            "AIza extension:yml",
+            "\"SG.\" AND SG. extension:yml",
+            "\"key-\" AND api_key extension:yml",
+            "glpat- extension:yml",
+            "secret_ AND notion extension:yml",
+            "lin_api_ extension:yml",
+            "xoxb- AND \"xoxb-\" extension:yml",
+            "\"AKIA\" AND secret extension:yml",
+            # Shell scripts
+            "sk- AND \"sk-\" extension:sh",
+            "ghp_ extension:sh",
+            "AIza extension:sh",
+            "\"AKIA\" AND secret extension:sh",
+            # TOML, Terraform, PHP, Ruby, TypeScript, Go
+            "sk- AND \"sk-\" extension:toml",
+            "ghp_ extension:toml",
+            "\"AKIA\" AND secret extension:tf",
+            "sk- AND \"sk-\" extension:php",
+            "AIza extension:php",
+            "sk- AND \"sk-\" extension:rb",
+            "sk- AND \"sk-\" extension:ts",
+            "ghp_ extension:ts",
+            "sk- AND \"sk-\" extension:go",
+            # Additional filename searches
+            "secret in:filename credentials",
+            "secret in:filename .env.staging",
+            "secret in:filename .env.prod",
+            "api_key in:filename .py",
+            "api_key in:filename .rb",
+            "password in:filename .env",
+            "token in:filename .yml",
+            "secret in:filename .yml",
+            "api_key in:filename .yml",
         ]
-        self.per_page = 50
+        self.issue_queries = [
+            # ---- ISSUE SEARCH ----
+            "sk- in:body",
+            "ghp_ in:body",
+            "gho_ in:body",
+            "ghs_ in:body",
+            "AIza in:body",
+            "\"AKIA\" in:body",
+            "sk_live_ in:body",
+            "rk_live_ in:body",
+            "sk-ant- in:body",
+            "hf_ in:body",
+            "\"SG.\" in:body",
+            "glpat- in:body",
+            "xoxb- in:body",
+        ]
+        self.commit_queries = [
+            # ---- COMMIT SEARCH ----
+            "sk- in:commit",
+            "ghp_ in:commit",
+            "gho_ in:commit",
+            "AIza in:commit",
+            "\"AKIA\" in:commit",
+            "sk_live_ in:commit",
+            "sk-ant- in:commit",
+        ]
+        self.per_page = 30
         self.existing_keys: Set[str] = set()
 
     def load_existing_keys(self) -> Set[str]:
@@ -362,6 +431,87 @@ class Scanner:
                 print(f"Network error: {e}")
                 return None
 
+    def _search_api(self, url: str, query: str, page: int = 1, accept: str = "") -> Optional[Dict]:
+        while True:
+            if self.stop_event and self.stop_event.is_set():
+                return None
+            params = {"q": query, "page": page, "per_page": self.per_page}
+            headers = self.get_headers()
+            if accept:
+                headers["Accept"] = accept
+            try:
+                response = self._session.get(url, headers=headers, params=params, timeout=15)
+                if self.stop_event and self.stop_event.is_set():
+                    return None
+                if response.status_code == 200:
+                    self._rate_limit_remaining = response.headers.get('X-RateLimit-Remaining', '?')
+                    return response.json()
+                elif response.status_code == 403:
+                    print("Rate limit hit! Switching GitHub token...")
+                    self.config.current_idx += 1
+                    if self.config.current_idx >= len(self.config.tokens):
+                        print("All tokens exhausted. Sleeping for 5 minutes...")
+                        self.config.current_idx = 0
+                        for _ in range(300):
+                            if self.stop_event and self.stop_event.is_set():
+                                return None
+                            time.sleep(1)
+                    continue
+                else:
+                    print(f"GitHub API error: {response.status_code}")
+                    return None
+            except Exception as e:
+                print(f"Network error: {e}")
+                return None
+
+    def search_issues(self, query: str, page: int = 1) -> Optional[Dict]:
+        return self._search_api("https://api.github.com/search/issues", query, page)
+
+    def search_commits(self, query: str, page: int = 1) -> Optional[Dict]:
+        return self._search_api(
+            "https://api.github.com/search/commits", query, page,
+            accept="application/vnd.github.cloak-preview"
+        )
+
+    def scan_text_results(self, results: Dict, source: str) -> List[Dict]:
+        found = []
+        for item in results.get("items", []):
+            if self.stop_event and self.stop_event.is_set():
+                break
+            if source == "issue":
+                text = f"{item.get('title', '')} {item.get('body', '')}"
+                repo = item.get("repository_url", "").replace("https://api.github.com/repos/", "")
+                url = item.get("html_url", "")
+            else:
+                text = item.get("commit", {}).get("message", "")
+                repo = item.get("repository", {}).get("full_name", "")
+                url = item.get("html_url", "")
+
+            for name, pattern in self.patterns.items():
+                keys = pattern.findall(text)
+                for key in keys:
+                    if key in self.existing_keys:
+                        continue
+                    if self.is_placeholder(key):
+                        continue
+                    try:
+                        print(f"\nFound {name} key ({key[:12]}...{key[-6:]}) in {source}: {url}")
+                    except UnicodeEncodeError:
+                        print(f"\nFound {name} key in {source}: {url}")
+                    valid = self.check_api_key(key, name)
+                    status = "Valid" if valid else "Not Valid"
+                    if self.db:
+                        self.db.add_activity(f"{name}: {status} ({source})", "info")
+                    entry = {
+                        "file_url": url, "repo": repo,
+                        "type": name, "key": key, "valid": valid
+                    }
+                    found.append(entry)
+                    self.existing_keys.add(key)
+                    if self.db:
+                        self.db.add_key(key=key, service=name, valid=valid, file_url=url, repo=repo)
+        return found
+
     def is_placeholder(self, key: str) -> bool:
         placeholders = [
             "1234567", "xxxxx", "changeme", "placeholder",
@@ -402,61 +552,6 @@ class Scanner:
             except Exception:
                 continue
         return ''
-
-    def scan_results(self, results: Dict) -> List[Dict]:
-        """Scan GitHub search results for API keys"""
-        found = []
-        for item in results.get("items", []):
-            file_url = item.get("html_url")
-            repo = item.get("repository", {}).get("full_name")
-            owner = item.get("repository", {}).get("owner", {}).get("login")
-            repo_url = item.get("repository", {}).get("html_url")
-            default_branch = item.get("repository", {}).get("default_branch")
-            path = item.get("path")
-            
-            content = self.get_file_content(item)
-            for name, pattern in self.patterns.items():
-                keys = pattern.findall(content)
-                for key in keys:
-                    if key in self.existing_keys:
-                        print(f"Skipped duplicate {name} key: {key[:10]}...{key[-6:]}")
-                        continue
-                        
-                    if self.is_placeholder(key):
-                        print(f" Skipped placeholder {name} key in {file_url}")
-                        continue
-
-                try:
-                    print(f"\nFound {name} key ({key[:12]}...{key[-6:]}) in {repo}")
-                except UnicodeEncodeError:
-                    print(f"\nFound {name} key in {repo}")
-                valid = self.check_api_key(key, name)
-                status = "Valid" if valid else "Not Valid"
-                try:
-                    print(f"  -> {name}: {status}")
-                except UnicodeEncodeError:
-                    pass
-                if self.db:
-                    self.db.add_activity(f"{name}: {status}", "info")
-                entry = {
-                    "file_url": file_url,
-                    "repo": repo,
-                    "owner": owner,
-                    "repo_url": repo_url,
-                    "default_branch": default_branch,
-                    "path": path,
-                    "type": name,
-                    "key": key,
-                    "valid": valid
-                }
-                found.append(entry)
-                self.existing_keys.add(key)
-                if self.db:
-                    self.db.add_key(
-                        key=key, service=name, valid=valid,
-                        file_url=file_url, repo=repo,
-                        owner=owner, repo_url=repo_url, path=path,
-                    )
 
     def scan_results(self, results: Dict) -> List[Dict]:
         found = []
@@ -505,11 +600,57 @@ class Scanner:
                     path=r.get("path", ""),
                 )
 
+    def _run_queries(self, queries: List[str], search_fn, scan_fn,
+                      progress_prefix: str, all_found: List[Dict]):
+        start_idx = 0
+        if self.db:
+            progress = self.db.load_progress()
+            if progress:
+                text = progress["query_text"]
+                if text.startswith(progress_prefix):
+                    start_idx = progress["query_index"]
+
+        for qi in range(start_idx, len(queries)):
+            query = queries[qi]
+            if self.stop_event and self.stop_event.is_set():
+                print("Scan stopped by user.")
+                if self.db:
+                    self.db.add_activity("Scan stopped by user", "warning")
+                    self.db.save_progress(qi, 1, f"{progress_prefix}{query}")
+                return
+            page = 1
+            if qi == start_idx and self.db:
+                p = self.db.load_progress()
+                if p and p["page"] > 1 and p["query_text"].startswith(progress_prefix):
+                    page = p["page"]
+            while True:
+                if self.stop_event and self.stop_event.is_set():
+                    print("Scan stopped by user.")
+                    if self.db:
+                        self.db.add_activity("Scan stopped by user", "warning")
+                        self.db.save_progress(qi, page, f"{progress_prefix}{query}")
+                    return
+                results = search_fn(query, page)
+                if self.stop_event and self.stop_event.is_set():
+                    print("Scan stopped by user.")
+                    if self.db:
+                        self.db.add_activity("Scan stopped by user", "warning")
+                        self.db.save_progress(qi, page, f"{progress_prefix}{query}")
+                    return
+                if not results or 'items' not in results or len(results['items']) == 0:
+                    print(f"No more results for query: {query}")
+                    break
+                found = scan_fn(results)
+                all_found.extend(found)
+                self.save_results(all_found)
+                page += 1
+                if self.db:
+                    self.db.save_progress(qi, page, f"{progress_prefix}{query}")
+                time.sleep(1)
+
     def run(self) -> None:
-        """Main scanning loop with resume support"""
         self.existing_keys = self.load_existing_keys()
         all_found = []
-        
         try:
             if self.result_file.exists():
                 with open(self.result_file, "r", encoding="utf-8") as f:
@@ -517,51 +658,13 @@ class Scanner:
         except Exception as e:
             print(f"Warning: could not load previous results: {e}")
 
-        start_idx = 0
-        if self.db:
-            progress = self.db.load_progress()
-            if progress:
-                start_idx = progress["query_index"]
-                print(f"Resuming from query #{start_idx + 1}: {progress['query_text']}")
-
-        for qi in range(start_idx, len(self.queries)):
-            query = self.queries[qi]
-            if self.stop_event and self.stop_event.is_set():
-                print("Scan stopped by user.")
-                if self.db:
-                    self.db.add_activity("Scan stopped by user", "warning")
-                    self.db.save_progress(qi, 1, query)
-                return
-            page = 1
-            if qi == start_idx and self.db:
-                p = self.db.load_progress()
-                if p and p["page"] > 1:
-                    page = p["page"]
-            while True:
-                if self.stop_event and self.stop_event.is_set():
-                    print("Scan stopped by user.")
-                    if self.db:
-                        self.db.add_activity("Scan stopped by user", "warning")
-                        self.db.save_progress(qi, page, query)
-                    return
-                results = self.search_github(query, page)
-                if self.stop_event and self.stop_event.is_set():
-                    print("Scan stopped by user.")
-                    if self.db:
-                        self.db.add_activity("Scan stopped by user", "warning")
-                        self.db.save_progress(qi, page, query)
-                    return
-                if not results or 'items' not in results or len(results['items']) == 0:
-                    print(f"No more results for query: {query}")
-                    break
-                    
-                found = self.scan_results(results)
-                all_found.extend(found)
-                self.save_results(all_found)
-                page += 1
-                if self.db:
-                    self.db.save_progress(qi, page, query)
-                time.sleep(3)
+        self._run_queries(self.queries, self.search_github, self.scan_results, "", all_found)
+        if not self.stop_event or not self.stop_event.is_set():
+            self._run_queries(self.issue_queries, self.search_issues,
+                              lambda r: self.scan_text_results(r, "issue"), "issue:", all_found)
+        if not self.stop_event or not self.stop_event.is_set():
+            self._run_queries(self.commit_queries, self.search_commits,
+                              lambda r: self.scan_text_results(r, "commit"), "commit:", all_found)
 
         print("Scan complete. Exiting.")
         if self.db:
@@ -574,17 +677,7 @@ def start_dashboard(host="127.0.0.1", port=5000, db_path="found_keys.db", tokens
     db = Database(db_path)
     db.initialize()
 
-    if tokens:
-        import threading
-        token_list = [t.strip() for t in tokens.split(",") if t.strip()]
-        def bg_scan():
-            config = TokenConfig(tokens=token_list)
-            scanner = Scanner(config, result_file="found_keys.json", db=db)
-            scanner.run()
-        t = threading.Thread(target=bg_scan, daemon=True)
-        t.start()
-
-    _run_dash(db, host=host, port=port)
+    _run_dash(db, host=host, port=port, tokens=tokens)
 
 
 if __name__ == "__main__":
@@ -631,4 +724,5 @@ if __name__ == "__main__":
         except KeyboardInterrupt:
             print("\nStopped by user.")
     else:
-        start_dashboard(host=args.host, port=args.port, db_path=args.output, tokens=args.tokens)
+        token_list = [t.strip() for t in args.tokens.split(",") if t.strip()] if args.tokens else None
+        start_dashboard(host=args.host, port=args.port, db_path=args.output, tokens=token_list)
