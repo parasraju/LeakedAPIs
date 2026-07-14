@@ -89,8 +89,6 @@ def _start_scan(tokens):
     global _scanner_thread, _scanner_status, _stop_event, _scan_tokens
 
     progress = _db.load_progress()
-    if progress and progress.get("query_index") == -1:
-        _db.clear_progress()
 
     _scan_tokens = tokens
     _stop_event = threading.Event()

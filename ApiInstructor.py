@@ -553,6 +553,19 @@ class Scanner:
                 continue
         return ''
 
+    def _is_example_file(self, path: str) -> bool:
+        lower = path.lower()
+        skip_patterns = [
+            "example", "sample", "template", "fixture", "stub",
+            ".env.example", ".env.sample", ".env.template",
+            "test.", "tests/", "testing.", "spec.", "mock.",
+            "README", "contributing", "docs/",
+        ]
+        for p in skip_patterns:
+            if p in lower:
+                return True
+        return False
+
     def scan_results(self, results: Dict) -> List[Dict]:
         found = []
         items = results.get("items", [])
@@ -668,7 +681,7 @@ class Scanner:
 
         print("Scan complete. Exiting.")
         if self.db:
-            self.db.save_progress(-1, 0, "SCAN_COMPLETE")
+            self.db.save_progress(0, 1, "")
 
 
 def start_dashboard(host="127.0.0.1", port=5000, db_path="found_keys.db", tokens=None):
