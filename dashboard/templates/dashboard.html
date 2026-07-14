@@ -63,6 +63,10 @@
         <div id="scan-status-dot" class="w-1.5 h-1.5 rounded-full bg-white/30"></div>
         <span id="scan-status" class="text-white/70 text-sm">Idle</span>
       </div>
+      <div class="px-2 py-1.5">
+        <div class="text-white/40 text-[11px] font-mono">Page</div>
+        <div id="current-page" class="text-white/90 text-sm font-mono mt-0.5">-</div>
+      </div>
       <div class="text-white/40 text-[11px] font-mono uppercase tracking-wider px-2 pt-3 pb-2">Rate Limit</div>
       <div class="px-2 py-1.5 space-y-1">
         <div class="flex justify-between text-[11px]">
@@ -102,7 +106,7 @@
         </div>
         <div class="p-5">
           <div class="grid grid-cols-12 gap-3 items-end">
-            <div class="col-span-5">
+            <div class="col-span-7">
               <label class="text-[11px] font-medium text-body uppercase tracking-wider mb-1.5 block">GitHub Token(s)</label>
               <input type="text" id="scan-tokens" class="w-full h-8 px-2.5 text-sm border border-hairline rounded-md focus:outline-none focus:border-ink focus:ring-0 transition-colors" placeholder="github_pat_xxx, github_pat_yyy">
               <p class="text-[11px] text-mute mt-1">Separate multiple tokens with commas</p>
@@ -111,13 +115,14 @@
               <label class="text-[11px] font-medium text-body uppercase tracking-wider mb-1.5 block">Pages</label>
               <input type="number" id="scan-pages" class="w-full h-8 px-2.5 text-sm border border-hairline rounded-md focus:outline-none focus:border-ink" value="10" min="1" max="100">
             </div>
-            <div class="col-span-2">
-              <label class="text-[11px] font-medium text-body uppercase tracking-wider mb-1.5 block">Delay (s)</label>
-              <input type="number" id="scan-delay" class="w-full h-8 px-2.5 text-sm border border-hairline rounded-md focus:outline-none focus:border-ink" value="5" min="1" step="0.5">
-            </div>
             <div class="col-span-3">
               <button id="scan-btn" onclick="startScan()" class="w-full h-8 bg-ink text-white text-sm font-medium rounded-full hover:bg-ink/90 transition-colors">Start Scan</button>
             </div>
+          </div>
+          <div class="flex items-center gap-3 mt-3 pt-3 border-t border-hairline">
+            <label class="text-[11px] font-medium text-body uppercase tracking-wider shrink-0">Start from page:</label>
+            <input type="number" id="start-page" class="w-20 h-7 px-2 text-sm border border-hairline rounded-md focus:outline-none focus:border-ink focus:ring-2 focus:ring-amber-200" value="1" min="1">
+            <span class="text-[11px] text-mute">Leave at 1 to start fresh, or enter a page number to resume</span>
           </div>
         </div>
       </div>
@@ -316,19 +321,21 @@
         const stopBtn = document.getElementById('stop-btn');
         const text = document.getElementById('scan-progress-text');
         const tokensEl = document.getElementById('tokens-remaining');
+        const pageEl = document.getElementById('current-page');
         if (tokensEl) tokensEl.textContent = s.tokens_remaining || '';
+        if (pageEl) pageEl.textContent = s.page ? `${s.query ? s.query.slice(0, 30) + '...' : ''} page ${s.page}` : '-';
         if (s.running) {
           if (statusEl) statusEl.textContent = 'Scanning...';
           if (dotEl) dotEl.className = 'w-1.5 h-1.5 rounded-full bg-amber-400 live-dot';
           if (btn) { btn.disabled = true; btn.textContent = 'Scanning'; btn.className = 'w-full h-8 bg-mute text-white text-sm font-medium rounded-full cursor-not-allowed'; }
           if (stopBtn) { stopBtn.disabled = false; stopBtn.textContent = 'Stop'; }
-          if (text) text.textContent = s.progress + (s.page ? ` (page ${s.page})` : '');
+          if (text) text.textContent = s.progress;
         } else {
           if (statusEl) statusEl.textContent = 'Idle';
           if (dotEl) dotEl.className = 'w-1.5 h-1.5 rounded-full bg-white/30';
           if (btn) { btn.disabled = false; btn.textContent = 'Start Scan'; btn.className = 'w-full h-8 bg-ink text-white text-sm font-medium rounded-full hover:bg-ink/90 transition-colors'; }
           if (stopBtn) { stopBtn.disabled = true; stopBtn.textContent = 'Stop'; }
-          if (text) text.textContent = '';
+          if (text) text.textContent = s.progress || '';
         }
       } catch(e) { console.error('updateScanStatus:', e); }
     }
@@ -337,6 +344,7 @@
       const tokens = document.getElementById('scan-tokens').value.trim();
       if (!tokens) { alert('Enter your GitHub token(s)'); return; }
       const tokenList = tokens.split(',').map(t => t.trim()).filter(Boolean);
+      const startPage = parseInt(document.getElementById('start-page').value) || 1;
       const btn = document.getElementById('scan-btn');
       btn.disabled = true;
       btn.textContent = 'Starting...';
@@ -344,7 +352,7 @@
         const r = await fetch('/api/scan/start', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({tokens: tokenList})
+          body: JSON.stringify({tokens: tokenList, start_page: startPage})
         });
         if (r.ok) {
           btn.textContent = 'Scanning';

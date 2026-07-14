@@ -155,10 +155,11 @@ class Database:
             self._conn.commit()
 
     def load_progress(self):
-        row = self._conn.execute("SELECT * FROM scan_progress ORDER BY id DESC LIMIT 1").fetchone()
-        if row:
-            return {"query_index": row["query_index"], "page": row["page"], "query_text": row["query_text"]}
-        return None
+        with self._lock:
+            row = self._conn.execute("SELECT * FROM scan_progress ORDER BY id DESC LIMIT 1").fetchone()
+            if row:
+                return {"query_index": row["query_index"], "page": row["page"], "query_text": row["query_text"]}
+            return None
 
     def clear_progress(self):
         with self._lock:

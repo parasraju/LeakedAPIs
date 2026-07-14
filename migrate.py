@@ -23,7 +23,7 @@ db.executescript("""
 """)
 
 try:
-    with open("../found_keys.json", encoding="utf-8") as f:
+    with open("found_keys.json", encoding="utf-8") as f:
         data = json.load(f)
     count = 0
     for entry in data:

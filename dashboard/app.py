@@ -89,6 +89,8 @@ def _start_scan(tokens):
     global _scanner_thread, _scanner_status, _stop_event, _scan_tokens
 
     progress = _db.load_progress()
+    if progress:
+        _db.add_activity(f"Loaded saved progress: query_idx={progress['query_index']} page={progress['page']} text='{progress['query_text'][:60]}'", "info")
 
     _scan_tokens = tokens
     _stop_event = threading.Event()
@@ -156,9 +158,18 @@ def scan_start():
         return jsonify({"error": "Scan already running"}), 409
 
     data = request.get_json(silent=True) or {}
-    tokens = data.get("tokens", [])
+    tokens = [t.strip() for t in data.get("tokens", []) if t and t.strip()]
     if not tokens:
         return jsonify({"error": "At least one GitHub token required"}), 400
+    for t in tokens:
+        if len(t) < 10:
+            return jsonify({"error": "Invalid token format"}), 400
+
+    start_page = data.get("start_page", 1)
+    if not isinstance(start_page, int) or start_page < 1:
+        start_page = 1
+    if start_page > 1:
+        _db.save_progress(0, start_page, "")
 
     _start_scan(tokens)
     return jsonify({"status": "started"})
@@ -177,16 +188,19 @@ def scan_stop():
 @app.route("/api/keys/report", methods=["POST"])
 def report_key():
     data = request.get_json(silent=True) or {}
-    owner = data.get("owner", "")
-    repo = data.get("repo", "")
-    key = data.get("key", "")
-    service = data.get("service", "")
-    file_url = data.get("file_url", "")
-    path = data.get("path", "")
-    token = data.get("token", "")
+    owner = (data.get("owner", "") or "").strip()
+    repo = (data.get("repo", "") or "").strip()
+    key = (data.get("key", "") or "").strip()
+    service = (data.get("service", "") or "").strip()
+    file_url = (data.get("file_url", "") or "").strip()
+    path = (data.get("path", "") or "").strip()
+    token = (data.get("token", "") or "").strip()
 
     if not all([owner, repo, key, token]):
         return jsonify({"error": "Missing required fields (owner, repo, key, token)"}), 400
+
+    if "/" in owner or ".." in owner or "/" in repo or ".." in repo:
+        return jsonify({"error": "Invalid owner or repo"}), 400
 
     repo_full = f"{owner}/{repo}"
     title = f"Exposed {service} API key found in repository"

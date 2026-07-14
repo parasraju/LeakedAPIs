@@ -10,7 +10,8 @@ from .validators import VALIDATORS
 class Scanner:
     def __init__(self, tokens: List[str], db: Database,
                  services: Optional[List[str]] = None,
-                 max_pages: int = 50, delay: float = 3.0):
+                 max_pages: int = 50, delay: float = 3.0,
+                 stop_event=None):
         self.tokens = tokens
         self.token_idx = 0
         self.db = db
@@ -18,6 +19,7 @@ class Scanner:
         self.max_pages = max_pages
         self.delay = delay
         self.per_page = 50
+        self.stop_event = stop_event
 
     @property
     def current_token(self) -> str:
@@ -28,6 +30,8 @@ class Scanner:
 
     def search_github(self, query: str, page: int = 1) -> Optional[Dict]:
         while True:
+            if self.stop_event and self.stop_event.is_set():
+                return None
             url = "https://api.github.com/search/code"
             params = {"q": query, "page": page, "per_page": self.per_page}
             print(f"\n[Token {self.token_idx+1}/{len(self.tokens)}] "
@@ -43,7 +47,10 @@ class Scanner:
                     if self.token_idx >= len(self.tokens):
                         print("  All tokens exhausted. Sleeping 5 min...")
                         self.token_idx = 0
-                        time.sleep(300)
+                        for _ in range(300):
+                            if self.stop_event and self.stop_event.is_set():
+                                return None
+                            time.sleep(1)
                     continue
                 else:
                     print(f"  GitHub API error: {r.status_code} {r.text[:200]}")
@@ -131,7 +138,13 @@ class Scanner:
         self.db.initialize()
 
         for query in ALL_QUERIES:
+            if self.stop_event and self.stop_event.is_set():
+                print("Scan stopped by user.")
+                return
             for page in range(1, self.max_pages + 1):
+                if self.stop_event and self.stop_event.is_set():
+                    print("Scan stopped by user.")
+                    return
                 results = self.search_github(query, page)
                 if not results or "items" not in results or len(results["items"]) == 0:
                     print(f"  No more results for: {query}")

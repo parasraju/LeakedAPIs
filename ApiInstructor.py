@@ -9,6 +9,9 @@ from pathlib import Path
 from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+from api.patterns import is_placeholder
+from api.validators import VALIDATORS
+
 @dataclass
 class TokenConfig:
     tokens: List[str]
@@ -171,221 +174,15 @@ class Scanner:
         self.per_page = 30
         self.existing_keys: Set[str] = set()
 
-    def load_existing_keys(self) -> Set[str]:
-        """Load previously found keys from result file"""
-        if not self.result_file.exists():
-            return set()
-            
-        try:
-            with open(self.result_file, "r", encoding="utf-8") as f:
-                results = json.load(f)
-                return {entry["key"] for entry in results}
-        except Exception as e:
-            print(f"Could not load {self.result_file}: {e}")
-            return set()
-
     def get_headers(self) -> Dict[str, str]:
         """Generate request headers with current token"""
         return {"Authorization": f"token {self.config.current_token}"}
 
-    def check_openai_key(self, api_key: str) -> bool:
-        try:
-            response = requests.get(
-                "https://api.openai.com/v1/models",
-                headers={"Authorization": f"Bearer {api_key}"},
-                timeout=10
-            )
-
-            if response.status_code == 200:
-                print(f" Valid OpenAI key: {api_key[:10]}...{api_key[-6:]}")
-                return True
-
-            print(f" Invalid OpenAI key: {api_key[:10]}...{api_key[-6:]}")
-            return False
-
-        except requests.exceptions.RequestException as e:
-            print(f" Network error checking OpenAI key: {e}")
-            return False
-
-    def check_huggingface_key(self, api_key: str) -> bool:
-        if not api_key or not api_key.startswith("hf_"):
-            return False
-
-        try:
-            response = requests.get(
-                "https://huggingface.co/api/whoami-v2",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "User-Agent": "HF-Key-Checker/1.0"
-                },
-                timeout=10
-            )
-
-            masked_key = (
-                f"{api_key[:10]}...{api_key[-6:]}"
-                if len(api_key) > 16
-                else api_key
-            )
-
-            if response.status_code == 200:
-                print(f"Valid Hugging Face key: {masked_key}")
-                return True
-
-            elif response.status_code in (401, 403):
-                print(f"Invalid or unauthorized Hugging Face key: {masked_key}")
-                return False
-
-            else:
-                print(
-                    f"❓ Unexpected response ({response.status_code}): "
-                    f"{response.text[:200]}"
-                )
-                return False
-
-        except requests.exceptions.Timeout:
-            print("Request timed out")
-            return False
-
-        except requests.exceptions.RequestException as e:
-            print(f"Network error: {e}")
-            return False
-
-        except Exception as e:
-            print(f"Unexpected error: {e}")
-            return False
-
-    def check_anthropic_key(self, api_key: str) -> bool:
-        try:
-            response = requests.get(
-                "https://api.anthropic.com/v1/users/me",
-                headers={"x-api-key": api_key, "anthropic-version": "2023-06-01"},
-                timeout=10
-            )
-            if response.status_code == 200:
-                print(f" Valid Anthropic key: {api_key[:12]}...{api_key[-6:]}")
-                return True
-            elif response.status_code == 401:
-                print(f" Invalid Anthropic key: {api_key[:12]}...{api_key[-6:]}")
-                return False
-            else:
-                print(f" Anthropic returned {response.status_code}")
-                return False
-        except requests.exceptions.RequestException as e:
-            print(f" Network error checking Anthropic key: {e}")
-            return False
-
-    def check_stripe_key(self, api_key: str) -> bool:
-        try:
-            response = requests.get(
-                "https://api.stripe.com/v1/charges?limit=1",
-                auth=(api_key, ""),
-                timeout=10
-            )
-            if response.status_code == 200:
-                print(f" Valid Stripe key: {api_key[:12]}...{api_key[-6:]}")
-                return True
-            print(f" Invalid Stripe key: {api_key[:12]}...{api_key[-6:]}")
-            return False
-        except requests.exceptions.RequestException as e:
-            print(f" Network error checking Stripe key: {e}")
-            return False
-
-    def check_github_key(self, api_key: str) -> bool:
-        try:
-            response = requests.get(
-                "https://api.github.com/user",
-                headers={"Authorization": f"Bearer {api_key}"},
-                timeout=10
-            )
-            if response.status_code == 200:
-                print(f" Valid GitHub token: {api_key[:6]}...{api_key[-6:]}")
-                return True
-            print(f" Invalid GitHub token: {api_key[:6]}...{api_key[-6:]}")
-            return False
-        except requests.exceptions.RequestException as e:
-            print(f" Network error checking GitHub token: {e}")
-            return False
-
-    def check_google_gemini_key(self, api_key: str) -> bool:
-        try:
-            response = requests.get(
-                f"https://generativelanguage.googleapis.com/v1/models?key={api_key}",
-                timeout=10
-            )
-            if response.status_code == 200:
-                print(f" Valid Google AI key: {api_key[:8]}...{api_key[-6:]}")
-                return True
-            print(f" Invalid Google AI key: {api_key[:8]}...{api_key[-6:]}")
-            return False
-        except requests.exceptions.RequestException as e:
-            print(f" Network error checking Google AI key: {e}")
-            return False
-
-    def check_telegram_bot_key(self, api_key: str) -> bool:
-        try:
-            response = requests.get(
-                f"https://api.telegram.org/bot{api_key}/getMe",
-                timeout=10
-            )
-            if response.status_code == 200:
-                data = response.json()
-                if data.get("ok"):
-                    username = data.get("result", {}).get("username", "?")
-                    print(f" Valid Telegram bot: @{username}")
-                    return True
-            print(f" Invalid Telegram bot token")
-            return False
-        except requests.exceptions.RequestException as e:
-            print(f" Network error checking Telegram bot: {e}")
-            return False
-
-    def check_discord_bot_key(self, api_key: str) -> bool:
-        try:
-            response = requests.get(
-                "https://discord.com/api/v10/users/@me",
-                headers={"Authorization": f"Bot {api_key}"},
-                timeout=10
-            )
-            if response.status_code == 200:
-                print(f" Valid Discord bot token")
-                return True
-            print(f" Invalid Discord bot token")
-            return False
-        except requests.exceptions.RequestException as e:
-            print(f" Network error checking Discord bot: {e}")
-            return False
-
-    def check_sendgrid_key(self, api_key: str) -> bool:
-        try:
-            response = requests.get(
-                "https://api.sendgrid.com/v3/scopes",
-                headers={"Authorization": f"Bearer {api_key}"},
-                timeout=10
-            )
-            if response.status_code == 200:
-                print(f" Valid SendGrid key: {api_key[:10]}...{api_key[-6:]}")
-                return True
-            print(f" Invalid SendGrid key: {api_key[:10]}...{api_key[-6:]}")
-            return False
-        except requests.exceptions.RequestException as e:
-            print(f" Network error checking SendGrid key: {e}")
-            return False
-
     def check_api_key(self, api_key: str, service: str) -> bool:
-        checkers = {
-            "OpenAI": self.check_openai_key,
-            "HuggingFace": self.check_huggingface_key,
-            "Anthropic": self.check_anthropic_key,
-            "Stripe": self.check_stripe_key,
-            "GitHub": self.check_github_key,
-            "GoogleGemini": self.check_google_gemini_key,
-            "TelegramBot": self.check_telegram_bot_key,
-            "DiscordBot": self.check_discord_bot_key,
-            "SendGrid": self.check_sendgrid_key,
-        }
-        checker = checkers.get(service)
-        if checker:
-            return checker(api_key)
+        from api.validators import VALIDATORS
+        validator = VALIDATORS.get(service)
+        if validator:
+            return validator(api_key)
         return True
 
     def search_github(self, query: str, page: int = 1) -> Optional[Dict]:
@@ -509,7 +306,9 @@ class Scanner:
                     found.append(entry)
                     self.existing_keys.add(key)
                     if self.db:
-                        self.db.add_key(key=key, service=name, valid=valid, file_url=url, repo=repo)
+                        owner = item.get("repository", {}).get("owner", {}).get("login", "") if source == "commit" else ""
+                        repo_url = item.get("repository", {}).get("html_url", "") if source == "commit" else ""
+                        self.db.add_key(key=key, service=name, valid=valid, file_url=url, repo=repo, owner=owner, repo_url=repo_url)
         return found
 
     def is_placeholder(self, key: str) -> bool:
@@ -553,6 +352,40 @@ class Scanner:
                 continue
         return ''
 
+    def _process_item_result(self, item: Dict, content: str, found: List[Dict]) -> None:
+        file_url = item.get("html_url", "")
+        repo = item.get("repository", {}).get("full_name", "")
+        owner = item.get("repository", {}).get("owner", {}).get("login", "")
+        repo_url = item.get("repository", {}).get("html_url", "")
+        path = item.get("path", "")
+        for name, pattern in self.patterns.items():
+            for key in pattern.findall(content):
+                if is_placeholder(key):
+                    continue
+                if self.db and self.db.key_exists(key):
+                    continue
+                valid = VALIDATORS.get(name, lambda k: True)(key)
+                try:
+                    print(f"  Found {name} key: {key[:12]}...{key[-6:]}")
+                except UnicodeEncodeError:
+                    print(f"  Found {name} key: [masked]")
+                if self.db:
+                    self.db.add_key(
+                        key=key, service=name, valid=valid,
+                        file_url=file_url, repo=repo,
+                        owner=owner, repo_url=repo_url, path=path,
+                    )
+                    label = "VALID" if valid else "Invalid"
+                    self.db.add_activity(
+                        f"{label} {name} key: {key[:12]}...{key[-6:]} in {repo}",
+                        "success" if valid else "warning"
+                    )
+                found.append({
+                    "key": key, "type": name, "valid": valid,
+                    "file_url": file_url, "repo": repo,
+                    "owner": owner, "repo_url": repo_url, "path": path,
+                })
+
     def _is_example_file(self, path: str) -> bool:
         lower = path.lower()
         skip_patterns = [
@@ -576,7 +409,10 @@ class Scanner:
                 return found
             path = item.get("path", "")
             if self._is_example_file(path):
-                print(f"  Skipped example file: {path}")
+                try:
+                    print(f"  Skipped example file: {path}")
+                except UnicodeEncodeError:
+                    print(f"  Skipped example file: [non-ASCII path]")
                 continue
             to_fetch.append(item)
 
@@ -620,8 +456,15 @@ class Scanner:
             progress = self.db.load_progress()
             if progress:
                 text = progress["query_text"]
-                if text.startswith(progress_prefix):
-                    start_idx = progress["query_index"]
+                print(f"[resume] loaded progress: idx={progress['query_index']} page={progress['page']} text='{text[:60]}' prefix='{progress_prefix}'")
+                if progress_prefix:
+                    if text.startswith(progress_prefix):
+                        start_idx = progress["query_index"]
+                        print(f"[resume] matched prefix -> start_idx={start_idx}")
+                else:
+                    if not text.startswith("issue:") and not text.startswith("commit:"):
+                        start_idx = progress["query_index"]
+                        print(f"[resume] code phase matched -> start_idx={start_idx}")
 
         for qi in range(start_idx, len(queries)):
             query = queries[qi]
@@ -634,8 +477,17 @@ class Scanner:
             page = 1
             if qi == start_idx and self.db:
                 p = self.db.load_progress()
-                if p and p["page"] > 1 and p["query_text"].startswith(progress_prefix):
-                    page = p["page"]
+                if p and p["page"] > 1:
+                    pt = p["query_text"]
+                    if progress_prefix:
+                        matches = pt.startswith(progress_prefix)
+                    else:
+                        matches = not pt.startswith("issue:") and not pt.startswith("commit:")
+                    if matches:
+                        page = p["page"]
+                        print(f"[resume] starting from query {qi} page {page}")
+                        if self.db:
+                            self.db.add_activity(f"Resumed query {qi} from page {page}", "info")
             while True:
                 if self.stop_event and self.stop_event.is_set():
                     print("Scan stopped by user.")
@@ -662,12 +514,13 @@ class Scanner:
                 time.sleep(1)
 
     def run(self) -> None:
-        self.existing_keys = self.load_existing_keys()
         all_found = []
+        self.existing_keys = set()
         try:
             if self.result_file.exists():
                 with open(self.result_file, "r", encoding="utf-8") as f:
                     all_found = json.load(f)
+                    self.existing_keys = {entry["key"] for entry in all_found}
         except Exception as e:
             print(f"Warning: could not load previous results: {e}")
 
@@ -679,9 +532,12 @@ class Scanner:
             self._run_queries(self.commit_queries, self.search_commits,
                               lambda r: self.scan_text_results(r, "commit"), "commit:", all_found)
 
-        print("Scan complete. Exiting.")
-        if self.db:
-            self.db.save_progress(0, 1, "")
+        if not self.stop_event or not self.stop_event.is_set():
+            print("Scan complete. Exiting.")
+            if self.db:
+                self.db.save_progress(0, 1, "")
+        else:
+            print("Scan was stopped. Progress saved for resume.")
 
 
 def start_dashboard(host="127.0.0.1", port=5000, db_path="found_keys.db", tokens=None):
