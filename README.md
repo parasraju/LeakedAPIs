@@ -2,6 +2,23 @@
 
 Scans GitHub for exposed API keys and displays results in a live dashboard.
 
+<div align="center">
+
+  [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org)
+  [![Flask](https://img.shields.io/badge/Powered%20by-Flask-000000?logo=flask&logoColor=white)](https://flask.palletsprojects.com)
+  [![GitHub](https://img.shields.io/badge/GitHub%20API-181717?logo=github&logoColor=white)](https://github.com)
+  [![License](https://img.shields.io/badge/License-MIT-green.svg)]()
+  [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)]()
+
+  <a href="#setup"><img src="https://img.shields.io/badge/%E2%9A%A1-Setup-7c3aed?style=for-the-badge"></a>
+  <a href="#commands"><img src="https://img.shields.io/badge/%F0%9F%93%9A-Commands-2563eb?style=for-the-badge"></a>
+  <a href="#services-scanned"><img src="https://img.shields.io/badge/%F0%9F%94%8D-Services%20Scanned-0d9488?style=for-the-badge"></a>
+  <a href="#project-structure"><img src="https://img.shields.io/badge/%F0%9F%8F%97-Project%20Structure-475569?style=for-the-badge"></a>
+
+</div>
+
+---
+
 ## Setup
 
 ```powershell
