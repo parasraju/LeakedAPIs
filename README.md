@@ -54,6 +54,7 @@ python main.py dashboard --port 5000
 python main.py dashboard -t "github_pat_xxxx" --port 5000
 ```
 
+
 | Flag | Description |
 |---|---|
 | `--port` | Dashboard port (default: 5000) |
