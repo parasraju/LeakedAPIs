@@ -3,6 +3,7 @@
 Scans GitHub for exposed API keys and displays results in a live dashboard.
 
 <div align="center">
+  <img width="1983" height="793" alt="b3327660-4c1f-4f64-9605-c34344d7fe71" src="https://github.com/user-attachments/assets/8644c7ad-8017-4f50-b830-9b2a3624eb41" />
 
   [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org)
   [![Flask](https://img.shields.io/badge/Powered%20by-Flask-000000?logo=flask&logoColor=white)](https://flask.palletsprojects.com)
