@@ -345,6 +345,7 @@
       if (!tokens) { alert('Enter your GitHub token(s)'); return; }
       const tokenList = tokens.split(',').map(t => t.trim()).filter(Boolean);
       const startPage = parseInt(document.getElementById('start-page').value) || 1;
+      const pages = parseInt(document.getElementById('scan-pages').value) || 0;
       const btn = document.getElementById('scan-btn');
       btn.disabled = true;
       btn.textContent = 'Starting...';
@@ -352,7 +353,7 @@
         const r = await fetch('/api/scan/start', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({tokens: tokenList, start_page: startPage})
+          body: JSON.stringify({tokens: tokenList, start_page: startPage, pages})
         });
         if (r.ok) {
           btn.textContent = 'Scanning';

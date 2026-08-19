@@ -4,6 +4,7 @@ import time
 from pathlib import Path
 import requests
 from flask import Flask, jsonify, render_template, request
+from werkzeug.exceptions import HTTPException
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -37,7 +38,6 @@ def revalidate():
     keys = _db.get_keys(limit=5000)
     count = 0
     for k in keys:
-        from ApiInstructor import Scanner
         from api.validators import VALIDATORS
         validator = VALIDATORS.get(k["service"])
         if validator:
@@ -85,7 +85,7 @@ def rate_limit():
     return jsonify(_rate_cache)
 
 
-def _start_scan(tokens):
+def _start_scan(tokens, max_pages=0):
     global _scanner_thread, _scanner_status, _stop_event, _scan_tokens
 
     progress = _db.load_progress()
@@ -103,7 +103,7 @@ def _start_scan(tokens):
             from ApiInstructor import Scanner, TokenConfig
             config = TokenConfig(tokens=tokens)
             scanner = Scanner(config=config, result_file="found_keys.json",
-                              db=_db, stop_event=_stop_event)
+                              db=_db, stop_event=_stop_event, max_pages=max_pages)
             original_search = scanner.search_github
 
             def search_with_status(query, page):
@@ -171,7 +171,11 @@ def scan_start():
     if start_page > 1:
         _db.save_progress(0, start_page, "")
 
-    _start_scan(tokens)
+    pages = data.get("pages", 0)
+    if not isinstance(pages, int) or pages < 1:
+        pages = 0
+
+    _start_scan(tokens, max_pages=pages)
     return jsonify({"status": "started"})
 
 
@@ -240,6 +244,8 @@ def handle_500(e):
 
 @app.errorhandler(Exception)
 def handle_uncaught(e):
+    if isinstance(e, HTTPException):
+        return e
     return jsonify({"error": "Unhandled exception: " + str(e)}), 500
 
 

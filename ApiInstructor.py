@@ -22,11 +22,14 @@ class TokenConfig:
         return self.tokens[self.current_idx % len(self.tokens)]
 
 class Scanner:
-    def __init__(self, config: TokenConfig, result_file: str = "found_keys.json", db=None, stop_event=None):
+    def __init__(self, config: TokenConfig, result_file: str = "found_keys.json",
+                 db=None, stop_event=None, max_pages: int = 0, delay: float = 1.0):
         self.config = config
         self.result_file = Path(result_file)
         self.db = db
         self.stop_event = stop_event
+        self.max_pages = max_pages
+        self.delay = delay
         self._session = requests.Session()
         self._rate_limit_remaining = None
         self.patterns = {
@@ -86,22 +89,22 @@ class Scanner:
             "xoxb- AND \"xoxb-\" extension:json",
             "\"AKIA\" AND secret extension:env",
             "\"AKIA\" AND secret extension:json",
-            "sk- in:filename .env",
-            "sk- in:filename .env.local",
-            "sk- in:filename .env.production",
-            "sk- in:filename .env.development",
-            "sk- in:filename .env.staging",
-            "hf_ in:filename .env",
-            "hf_ in:filename .env.local",
-            "ghp_ in:filename .env",
-            "ghp_ in:filename .txt",
-            "AIza in:filename .env",
-            "api_key in:filename .env",
-            "api_key in:filename .env.local",
-            "secret in:filename .env",
-            "secret in:filename .env.local",
-            "token in:filename .env",
-            "token in:filename .env.local",
+            "\"sk-\" filename:.env",
+            "\"sk-\" filename:.env.local",
+            "\"sk-\" filename:.env.production",
+            "\"sk-\" filename:.env.development",
+            "\"sk-\" filename:.env.staging",
+            "\"hf_\" filename:.env",
+            "\"hf_\" filename:.env.local",
+            "\"ghp_\" filename:.env",
+            "\"ghp_\" filename:.txt",
+            "\"AIza\" filename:.env",
+            "\"api_key\" filename:.env",
+            "\"api_key\" filename:.env.local",
+            "\"secret\" filename:.env",
+            "\"secret\" filename:.env.local",
+            "\"token\" filename:.env",
+            "\"token\" filename:.env.local",
             # .yml mirrors of .yaml queries
             "sk- AND \"sk-\" extension:yml",
             "hf_ AND \"hf_\" extension:yml",
@@ -135,15 +138,15 @@ class Scanner:
             "ghp_ extension:ts",
             "sk- AND \"sk-\" extension:go",
             # Additional filename searches
-            "secret in:filename credentials",
-            "secret in:filename .env.staging",
-            "secret in:filename .env.prod",
-            "api_key in:filename .py",
-            "api_key in:filename .rb",
-            "password in:filename .env",
-            "token in:filename .yml",
-            "secret in:filename .yml",
-            "api_key in:filename .yml",
+            "secret filename:credentials",
+            "secret filename:.env.staging",
+            "secret filename:.env.prod",
+            "api_key filename:.py",
+            "api_key filename:.rb",
+            "password filename:.env",
+            "token filename:.yml",
+            "secret filename:.yml",
+            "api_key filename:.yml",
         ]
         self.issue_queries = [
             # ---- ISSUE SEARCH ----
@@ -306,10 +309,24 @@ class Scanner:
                     found.append(entry)
                     self.existing_keys.add(key)
                     if self.db:
-                        owner = item.get("repository", {}).get("owner", {}).get("login", "") if source == "commit" else ""
-                        repo_url = item.get("repository", {}).get("html_url", "") if source == "commit" else ""
-                        self.db.add_key(key=key, service=name, valid=valid, file_url=url, repo=repo, owner=owner, repo_url=repo_url)
+                        owner, repo_url = self._source_repo_info(item, source)
+                        self.db.add_key(key=key, service=name, valid=valid,
+                                        file_url=url, repo=repo,
+                                        owner=owner, repo_url=repo_url)
         return found
+
+    def _source_repo_info(self, item: Dict, source: str):
+        if source == "commit":
+            repo_obj = item.get("repository", {}) or {}
+            return (repo_obj.get("owner", {}).get("login", ""),
+                    repo_obj.get("html_url", ""))
+        repo_path = item.get("repository_url", "")
+        if repo_path:
+            parts = [p for p in repo_path.rstrip("/").split("/") if p]
+            if len(parts) >= 5:
+                owner, name = parts[-2], parts[-1]
+                return owner, f"https://github.com/{owner}/{name}"
+        return "", ""
 
     def is_placeholder(self, key: str) -> bool:
         placeholders = [
@@ -495,6 +512,9 @@ class Scanner:
                         self.db.add_activity("Scan stopped by user", "warning")
                         self.db.save_progress(qi, page, f"{progress_prefix}{query}")
                     return
+                if self.max_pages and page > self.max_pages:
+                    print(f"Reached max pages ({self.max_pages}) for query: {query}")
+                    break
                 results = search_fn(query, page)
                 if self.stop_event and self.stop_event.is_set():
                     print("Scan stopped by user.")
@@ -511,7 +531,7 @@ class Scanner:
                 page += 1
                 if self.db:
                     self.db.save_progress(qi, page, f"{progress_prefix}{query}")
-                time.sleep(1)
+                time.sleep(self.delay)
 
     def run(self) -> None:
         all_found = []
@@ -587,7 +607,8 @@ if __name__ == "__main__":
         db = Database(args.output)
         db.initialize()
         config = TokenConfig(tokens=[t.strip() for t in args.tokens.split(",") if t.strip()])
-        scanner = Scanner(config, result_file="found_keys.json", db=db)
+        scanner = Scanner(config, result_file="found_keys.json", db=db,
+                          max_pages=args.max_pages, delay=args.delay)
         try:
             scanner.run()
         except KeyboardInterrupt:
