@@ -2,7 +2,6 @@ import requests
 import re
 import json
 import time
-import os
 import sys
 from typing import List, Dict, Optional, Set
 from pathlib import Path
@@ -51,7 +50,6 @@ class Scanner:
             "AWSKey": re.compile(r"AKIA[0-9A-Z]{16}"),
         }
         self.queries = [
-            # ---- CODE SEARCH ----
             "sk- AND \"sk-\" extension:env",
             "sk- AND \"sk-\" extension:json",
             "sk- AND \"sk-\" extension:yaml",
@@ -105,7 +103,6 @@ class Scanner:
             "\"secret\" filename:.env.local",
             "\"token\" filename:.env",
             "\"token\" filename:.env.local",
-            # .yml mirrors of .yaml queries
             "sk- AND \"sk-\" extension:yml",
             "hf_ AND \"hf_\" extension:yml",
             "sk-ant- AND \"sk-ant-\" extension:yml",
@@ -122,12 +119,10 @@ class Scanner:
             "lin_api_ extension:yml",
             "xoxb- AND \"xoxb-\" extension:yml",
             "\"AKIA\" AND secret extension:yml",
-            # Shell scripts
             "sk- AND \"sk-\" extension:sh",
             "ghp_ extension:sh",
             "AIza extension:sh",
             "\"AKIA\" AND secret extension:sh",
-            # TOML, Terraform, PHP, Ruby, TypeScript, Go
             "sk- AND \"sk-\" extension:toml",
             "ghp_ extension:toml",
             "\"AKIA\" AND secret extension:tf",
@@ -137,7 +132,6 @@ class Scanner:
             "sk- AND \"sk-\" extension:ts",
             "ghp_ extension:ts",
             "sk- AND \"sk-\" extension:go",
-            # Additional filename searches
             "secret filename:credentials",
             "secret filename:.env.staging",
             "secret filename:.env.prod",
@@ -149,7 +143,6 @@ class Scanner:
             "api_key filename:.yml",
         ]
         self.issue_queries = [
-            # ---- ISSUE SEARCH ----
             "sk- in:body",
             "ghp_ in:body",
             "gho_ in:body",
@@ -165,7 +158,6 @@ class Scanner:
             "xoxb- in:body",
         ]
         self.commit_queries = [
-            # ---- COMMIT SEARCH ----
             "sk- in:commit",
             "ghp_ in:commit",
             "gho_ in:commit",
@@ -178,18 +170,15 @@ class Scanner:
         self.existing_keys: Set[str] = set()
 
     def get_headers(self) -> Dict[str, str]:
-        """Generate request headers with current token"""
         return {"Authorization": f"token {self.config.current_token}"}
 
     def check_api_key(self, api_key: str, service: str) -> bool:
-        from api.validators import VALIDATORS
         validator = VALIDATORS.get(service)
         if validator:
             return validator(api_key)
         return True
 
     def search_github(self, query: str, page: int = 1) -> Optional[Dict]:
-        """Search GitHub API for keys"""
         while True:
             if self.stop_event and self.stop_event.is_set():
                 return None

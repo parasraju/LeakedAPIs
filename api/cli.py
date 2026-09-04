@@ -12,7 +12,6 @@ def parse_args(argv=None):
 
     sub = parser.add_subparsers(dest="mode", help="Mode: scan or dashboard")
 
-    # --- scan ---
     scan = sub.add_parser("scan", help="Run scanner (CLI mode)")
     scan.add_argument("-t", "--tokens", nargs="+", required=True,
                       help="GitHub personal access tokens")
@@ -26,7 +25,6 @@ def parse_args(argv=None):
     scan.add_argument("--delay", type=float, default=3.0,
                       help="Delay between requests in seconds (default: 3.0)")
 
-    # --- dashboard ---
     dash = sub.add_parser("dashboard", help="Start the web dashboard")
     dash.add_argument("-o", "--output", default="found_keys.db",
                       help="SQLite database path (default: found_keys.db)")
@@ -38,7 +36,7 @@ def parse_args(argv=None):
                       help="GitHub tokens to run scanner alongside dashboard")
     dash.add_argument("-s", "--services", nargs="+",
                       default=SERVICES,
-                      help=f"Services to scan for")
+                      help="Services to scan for")
     dash.add_argument("--max-pages", type=int, default=20,
                       help="Max pages per query (default: 20)")
     dash.add_argument("--delay", type=float, default=5.0,

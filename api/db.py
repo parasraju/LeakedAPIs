@@ -14,10 +14,6 @@ class Database:
         self._conn.execute("PRAGMA busy_timeout=5000")
         self._lock = threading.Lock()
 
-    @property
-    def conn(self):
-        return self._conn
-
     def initialize(self):
         with self._lock:
             self._conn.executescript("""
