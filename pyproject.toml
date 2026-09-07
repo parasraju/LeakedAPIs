@@ -1,0 +1,20 @@
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "F",
+    "BLE001",        # blind except
+    "DTZ",           # naive datetime
+    "PLW0602",       # global used without assignment
+    "PLW1510",       # subprocess.run without explicit check
+    "S110",          # try-except-pass
+    "S112",          # try-except-continue
+    "SIM103",        # redundant boolean return
+    "T20",           # print() used as logging
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
