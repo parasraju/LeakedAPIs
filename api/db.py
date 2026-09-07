@@ -1,8 +1,7 @@
 import sqlite3
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Dict, Optional
 
 
 class Database:
@@ -63,23 +62,48 @@ class Database:
         """)
             self._conn.commit()
 
-    def add_key(self, key: str, service: str, valid: bool,
-                file_url: str = "", repo: str = "", owner: str = "",
-                repo_url: str = "", path: str = "") -> bool:
-        now = datetime.utcnow().isoformat()
+    def add_key(
+        self,
+        key: str,
+        service: str,
+        valid: bool,
+        file_url: str = "",
+        repo: str = "",
+        owner: str = "",
+        repo_url: str = "",
+        path: str = "",
+    ) -> bool:
+        now = datetime.now(timezone.utc).isoformat()
         with self._lock:
-            self._conn.execute("""
+            self._conn.execute(
+                """
                 INSERT OR IGNORE INTO keys
                 (key, service, file_url, repo, owner, repo_url, path,
                  valid, first_seen, last_seen, checked_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (key, service, file_url, repo, owner, repo_url, path,
-                  int(valid), now, now, now))
-            self._conn.execute("""
+            """,
+                (
+                    key,
+                    service,
+                    file_url,
+                    repo,
+                    owner,
+                    repo_url,
+                    path,
+                    int(valid),
+                    now,
+                    now,
+                    now,
+                ),
+            )
+            self._conn.execute(
+                """
                 UPDATE keys SET last_seen=?, checked_at=?, valid=?, file_url=?, repo=?,
                                 owner=?, repo_url=?, path=?
                 WHERE key=?
-            """, (now, now, int(valid), file_url, repo, owner, repo_url, path, key))
+            """,
+                (now, now, int(valid), file_url, repo, owner, repo_url, path, key),
+            )
             self._conn.commit()
             return True
 
@@ -87,8 +111,9 @@ class Database:
         row = self._conn.execute("SELECT 1 FROM keys WHERE key=?", (key,)).fetchone()
         return row is not None
 
-    def get_keys(self, service: Optional[str] = None,
-                 valid_only: bool = False, limit: int = 200) -> List[Dict]:
+    def get_keys(
+        self, service: str | None = None, valid_only: bool = False, limit: int = 200
+    ) -> list[dict]:
         sql = "SELECT * FROM keys WHERE 1=1"
         params = []
         if service:
@@ -105,7 +130,7 @@ class Database:
         with self._lock:
             self._conn.execute(
                 "INSERT INTO scan_log (query, page, items_returned, keys_found) VALUES (?, ?, ?, ?)",
-                (query, page, items_returned, keys_found)
+                (query, page, items_returned, keys_found),
             )
             self._conn.commit()
 
@@ -113,17 +138,17 @@ class Database:
         with self._lock:
             self._conn.execute(
                 "INSERT INTO activity_log (message, level) VALUES (?, ?)",
-                (message, level)
+                (message, level),
             )
             self._conn.commit()
 
-    def get_activity(self, limit: int = 100) -> List[Dict]:
+    def get_activity(self, limit: int = 100) -> list[dict]:
         rows = self._conn.execute(
             "SELECT * FROM activity_log ORDER BY created_at DESC LIMIT ?", (limit,)
         ).fetchall()
         return [dict(r) for r in rows]
 
-    def get_stats(self) -> Dict:
+    def get_stats(self) -> dict:
         total = self._conn.execute("SELECT COUNT(*) FROM keys").fetchone()[0]
         valid = self._conn.execute("SELECT COUNT(*) FROM keys WHERE valid=1").fetchone()[0]
         invalid = self._conn.execute("SELECT COUNT(*) FROM keys WHERE valid=0").fetchone()[0]
@@ -146,15 +171,21 @@ class Database:
             self._conn.execute("DELETE FROM scan_progress")
             self._conn.execute(
                 "INSERT INTO scan_progress (query_index, page, query_text) VALUES (?, ?, ?)",
-                (query_index, page, query_text)
+                (query_index, page, query_text),
             )
             self._conn.commit()
 
     def load_progress(self):
         with self._lock:
-            row = self._conn.execute("SELECT * FROM scan_progress ORDER BY id DESC LIMIT 1").fetchone()
+            row = self._conn.execute(
+                "SELECT * FROM scan_progress ORDER BY id DESC LIMIT 1"
+            ).fetchone()
             if row:
-                return {"query_index": row["query_index"], "page": row["page"], "query_text": row["query_text"]}
+                return {
+                    "query_index": row["query_index"],
+                    "page": row["page"],
+                    "query_text": row["query_text"],
+                }
             return None
 
     def clear_progress(self):

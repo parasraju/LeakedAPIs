@@ -1,10 +1,24 @@
+"""Regex patterns, placeholder heuristics, and GitHub search queries."""
+
 import re
 
-
 SERVICES = [
-    "OpenAI", "HuggingFace", "Anthropic", "Stripe", "GitHub",
-    "GoogleGemini", "TelegramBot", "DiscordBot", "SendGrid",
-    "GitLab", "Notion", "Linear", "Mailgun", "Mapbox", "SlackBot", "AWSKey",
+    "OpenAI",
+    "HuggingFace",
+    "Anthropic",
+    "Stripe",
+    "GitHub",
+    "GoogleGemini",
+    "TelegramBot",
+    "DiscordBot",
+    "SendGrid",
+    "GitLab",
+    "Notion",
+    "Linear",
+    "Mailgun",
+    "Mapbox",
+    "SlackBot",
+    "AWSKey",
 ]
 
 PATTERNS = {
@@ -67,19 +81,19 @@ PREFIX_QUERIES = [
     'hf_ AND "hf_" extension:json',
     'sk-ant- AND "sk-ant-" extension:env',
     'sk-ant- AND "sk-ant-" extension:json',
-    'sk_live_ extension:env',
-    'rk_live_ extension:env',
+    "sk_live_ extension:env",
+    "rk_live_ extension:env",
     '"ghp_" AND ghp_ extension:env',
     '"ghp_" AND ghp_ extension:json',
-    'ghp_ extension:txt',
-    'AIza extension:env',
-    'AIza extension:json',
+    "ghp_ extension:txt",
+    "AIza extension:env",
+    "AIza extension:json",
     '"SG." AND SG. extension:env',
     '"SG." AND SG. extension:json',
     '"key-" AND api_key extension:env',
-    'glpat- extension:env',
-    'secret_ AND notion extension:env',
-    'lin_api_ extension:env',
+    "glpat- extension:env",
+    "secret_ AND notion extension:env",
+    "lin_api_ extension:env",
     'xoxb- AND "xoxb-" extension:env',
     'xoxb- AND "xoxb-" extension:json',
     '"AKIA" AND secret extension:env',
@@ -103,20 +117,159 @@ PREFIX_QUERIES = [
 
 ALL_QUERIES = ENV_VAR_QUERIES + PREFIX_QUERIES
 
+CODE_QUERIES = [
+    'sk- AND "sk-" extension:env',
+    'sk- AND "sk-" extension:json',
+    'sk- AND "sk-" extension:yaml',
+    'sk- AND "sk-" extension:py',
+    'sk- AND "sk-" extension:js',
+    'hf_ AND "hf_" extension:env',
+    'hf_ AND "hf_" extension:json',
+    'hf_ AND "hf_" extension:yaml',
+    'sk-ant- AND "sk-ant-" extension:env',
+    'sk-ant- AND "sk-ant-" extension:json',
+    'sk-ant- AND "sk-ant-" extension:yaml',
+    "sk_live_ extension:env",
+    "sk_live_ extension:json",
+    "sk_live_ extension:yaml",
+    "rk_live_ extension:env",
+    '"ghp_" AND ghp_ extension:env',
+    '"ghp_" AND ghp_ extension:json',
+    "ghp_ extension:txt",
+    "gho_ extension:env",
+    "ghs_ extension:env",
+    "AIza extension:env",
+    "AIza extension:json",
+    "AIza extension:js",
+    '"SG." AND SG. extension:env',
+    '"SG." AND SG. extension:json',
+    '"key-" AND api_key extension:env',
+    '"key-" AND api_key extension:json',
+    "glpat- extension:env",
+    "glpat- extension:json",
+    "secret_ AND notion extension:env",
+    "secret_ AND notion extension:json",
+    "lin_api_ extension:env",
+    "lin_api_ extension:json",
+    'xoxb- AND "xoxb-" extension:env',
+    'xoxb- AND "xoxb-" extension:json',
+    '"AKIA" AND secret extension:env',
+    '"AKIA" AND secret extension:json',
+    '"sk-" filename:.env',
+    '"sk-" filename:.env.local',
+    '"sk-" filename:.env.production',
+    '"sk-" filename:.env.development',
+    '"sk-" filename:.env.staging',
+    '"hf_" filename:.env',
+    '"hf_" filename:.env.local',
+    '"ghp_" filename:.env',
+    '"ghp_" filename:.txt',
+    '"AIza" filename:.env',
+    '"api_key" filename:.env',
+    '"api_key" filename:.env.local',
+    '"secret" filename:.env',
+    '"secret" filename:.env.local',
+    '"token" filename:.env',
+    '"token" filename:.env.local',
+    'sk- AND "sk-" extension:yml',
+    'hf_ AND "hf_" extension:yml',
+    'sk-ant- AND "sk-ant-" extension:yml',
+    "sk_live_ extension:yml",
+    "rk_live_ extension:yml",
+    "ghp_ extension:yml",
+    "gho_ extension:yml",
+    "ghs_ extension:yml",
+    "AIza extension:yml",
+    '"SG." AND SG. extension:yml',
+    '"key-" AND api_key extension:yml',
+    "glpat- extension:yml",
+    "secret_ AND notion extension:yml",
+    "lin_api_ extension:yml",
+    'xoxb- AND "xoxb-" extension:yml',
+    '"AKIA" AND secret extension:yml',
+    'sk- AND "sk-" extension:sh',
+    "ghp_ extension:sh",
+    "AIza extension:sh",
+    '"AKIA" AND secret extension:sh',
+    'sk- AND "sk-" extension:toml',
+    "ghp_ extension:toml",
+    '"AKIA" AND secret extension:tf',
+    'sk- AND "sk-" extension:php',
+    "AIza extension:php",
+    'sk- AND "sk-" extension:rb',
+    'sk- AND "sk-" extension:ts',
+    "ghp_ extension:ts",
+    'sk- AND "sk-" extension:go',
+    "secret filename:credentials",
+    "secret filename:.env.staging",
+    "secret filename:.env.prod",
+    "api_key filename:.py",
+    "api_key filename:.rb",
+    "password filename:.env",
+    "token filename:.yml",
+    "secret filename:.yml",
+    "api_key filename:.yml",
+]
+
+ISSUE_QUERIES = [
+    "sk- in:body",
+    "ghp_ in:body",
+    "gho_ in:body",
+    "ghs_ in:body",
+    "AIza in:body",
+    '"AKIA" in:body',
+    "sk_live_ in:body",
+    "rk_live_ in:body",
+    "sk-ant- in:body",
+    "hf_ in:body",
+    '"SG." in:body',
+    "glpat- in:body",
+    "xoxb- in:body",
+]
+
+COMMIT_QUERIES = [
+    "sk- in:commit",
+    "ghp_ in:commit",
+    "gho_ in:commit",
+    "AIza in:commit",
+    '"AKIA" in:commit',
+    "sk_live_ in:commit",
+    "sk-ant- in:commit",
+]
+
+_PLACEHOLDER_SUBSTRINGS = [
+    "xxxxx",
+    "changeme",
+    "placeholder",
+    "your-api",
+    "your_key",
+    "your_",
+    "your-",
+    "example",
+    "test_key",
+    "dummy",
+    "sample",
+    "XXXXXXXX",
+    "xxxxxxx",
+]
+
+_X_RATIO = 0.25
+
+_REPEATED_RUN = re.compile(r"(.)\1{5}")
+
 
 def is_placeholder(key: str) -> bool:
-    placeholders = [
-        "1234567", "xxxxx", "changeme", "placeholder",
-        "your-api", "your_key", "YOUR_", "your-",
-        "example", "test_key", "dummy", "sample",
-        "XXXXXXXX", "xxxxxxx", "0000000",
-    ]
+    """Return True when *key* looks like a sample/placeholder value.
+
+    A value is treated as a placeholder when it contains a known sample
+    marker, a run of 6+ identical characters (e.g. ``xxxxxxx`` or
+    ``0000000``), low tail cardinality, or too many ``x`` characters.
+    """
     lower = key.lower()
-    for p in placeholders:
-        if p in lower:
-            return True
+    if any(p in lower for p in _PLACEHOLDER_SUBSTRINGS):
+        return True
+    if _REPEATED_RUN.search(key):
+        return True
     if len(set(key[-12:])) <= 3:
         return True
-    if key.count("x") + key.count("X") > len(key) * 0.25:
-        return True
-    return False
+    return key.count("x") + key.count("X") > len(key) * _X_RATIO

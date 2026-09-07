@@ -1,28 +1,63 @@
-import requests
-import re
-import json
-import time
-import sys
-from typing import List, Dict, Optional, Set
-from pathlib import Path
-from dataclasses import dataclass
-from concurrent.futures import ThreadPoolExecutor, as_completed
+"""GitHub API-key scanner used by the dashboard's background scan thread.
 
-from api.patterns import is_placeholder
+The command-line entry point for this project lives in ``api/cli.py``
+(aliased by ``main.py``). This module still provides :class:`Scanner` and
+:class:`TokenConfig` for the dashboard and the ``start_dashboard`` helper.
+"""
+
+import json
+import logging
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
+from pathlib import Path
+
+import requests
+
+from api.patterns import (
+    CODE_QUERIES,
+    COMMIT_QUERIES,
+    ISSUE_QUERIES,
+    PATTERNS,
+    is_placeholder,
+)
 from api.validators import VALIDATORS
+
+logger = logging.getLogger(__name__)
+
+GITHUB_SEARCH_CODE_URL = "https://api.github.com/search/code"
+GITHUB_SEARCH_ISSUES_URL = "https://api.github.com/search/issues"
+GITHUB_SEARCH_COMMITS_URL = "https://api.github.com/search/commits"
+COMMITS_ACCEPT_HEADER = "application/vnd.github.cloak-preview"
+RAW_FILE_URL = "https://raw.githubusercontent.com/{repo}/{ref}/{path}"
+RATE_LIMIT_BACKOFF_SECONDS = 300
+
 
 @dataclass
 class TokenConfig:
-    tokens: List[str]
+    tokens: list[str]
     current_idx: int = 0
-    
+
     @property
     def current_token(self) -> str:
         return self.tokens[self.current_idx % len(self.tokens)]
 
+
+def _accept_any(_key: str) -> bool:
+    """Fallback validator used when a service has no live check."""
+    return True
+
+
 class Scanner:
-    def __init__(self, config: TokenConfig, result_file: str = "found_keys.json",
-                 db=None, stop_event=None, max_pages: int = 0, delay: float = 1.0):
+    def __init__(
+        self,
+        config: TokenConfig,
+        result_file: str = "found_keys.json",
+        db=None,
+        stop_event=None,
+        max_pages: int = 0,
+        delay: float = 1.0,
+    ):
         self.config = config
         self.result_file = Path(result_file)
         self.db = db
@@ -31,145 +66,14 @@ class Scanner:
         self.delay = delay
         self._session = requests.Session()
         self._rate_limit_remaining = None
-        self.patterns = {
-            "OpenAI": re.compile(r"sk-(?:proj-[A-Za-z0-9]{20,}|[A-Za-z0-9]{20,})"),
-            "HuggingFace": re.compile(r"hf_[A-Za-z0-9]{36,64}"),
-            "Anthropic": re.compile(r"sk-ant-[A-Za-z0-9]{32,96}"),
-            "Stripe": re.compile(r"(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{24,}"),
-            "GitHub": re.compile(r"(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36,}"),
-            "GoogleGemini": re.compile(r"AIza[0-9A-Za-z_-]{35}"),
-            "TelegramBot": re.compile(r"\d{8,10}:[A-Za-z0-9_-]{35,45}"),
-            "DiscordBot": re.compile(r"[MN][A-Za-z0-9_-]{23,25}\.[A-Za-z0-9_-]{6,7}\.[A-Za-z0-9_-]{27,}"),
-            "SendGrid": re.compile(r"SG\.[A-Za-z0-9_-]{22,}\.[A-Za-z0-9_-]{43,}"),
-            "GitLab": re.compile(r"glpat-[A-Za-z0-9_-]{20,}"),
-            "Notion": re.compile(r"secret_[A-Za-z0-9]{43,48}"),
-            "Linear": re.compile(r"lin_api_[A-Za-z0-9]{40,}"),
-            "Mailgun": re.compile(r"key-[A-Za-z0-9]{32,}"),
-            "Mapbox": re.compile(r"(?:pk|sk)\.[A-Za-z0-9]{60,}\.[A-Za-z0-9]{1,}"),
-            "SlackBot": re.compile(r"xox[baprs]-[A-Za-z0-9]{10,}-[A-Za-z0-9]{10,}-[A-Za-z0-9]{24,}"),
-            "AWSKey": re.compile(r"AKIA[0-9A-Z]{16}"),
-        }
-        self.queries = [
-            "sk- AND \"sk-\" extension:env",
-            "sk- AND \"sk-\" extension:json",
-            "sk- AND \"sk-\" extension:yaml",
-            "sk- AND \"sk-\" extension:py",
-            "sk- AND \"sk-\" extension:js",
-            "hf_ AND \"hf_\" extension:env",
-            "hf_ AND \"hf_\" extension:json",
-            "hf_ AND \"hf_\" extension:yaml",
-            "sk-ant- AND \"sk-ant-\" extension:env",
-            "sk-ant- AND \"sk-ant-\" extension:json",
-            "sk-ant- AND \"sk-ant-\" extension:yaml",
-            "sk_live_ extension:env",
-            "sk_live_ extension:json",
-            "sk_live_ extension:yaml",
-            "rk_live_ extension:env",
-            "\"ghp_\" AND ghp_ extension:env",
-            "\"ghp_\" AND ghp_ extension:json",
-            "ghp_ extension:txt",
-            "gho_ extension:env",
-            "ghs_ extension:env",
-            "AIza extension:env",
-            "AIza extension:json",
-            "AIza extension:js",
-            "\"SG.\" AND SG. extension:env",
-            "\"SG.\" AND SG. extension:json",
-            "\"key-\" AND api_key extension:env",
-            "\"key-\" AND api_key extension:json",
-            "glpat- extension:env",
-            "glpat- extension:json",
-            "secret_ AND notion extension:env",
-            "secret_ AND notion extension:json",
-            "lin_api_ extension:env",
-            "lin_api_ extension:json",
-            "xoxb- AND \"xoxb-\" extension:env",
-            "xoxb- AND \"xoxb-\" extension:json",
-            "\"AKIA\" AND secret extension:env",
-            "\"AKIA\" AND secret extension:json",
-            "\"sk-\" filename:.env",
-            "\"sk-\" filename:.env.local",
-            "\"sk-\" filename:.env.production",
-            "\"sk-\" filename:.env.development",
-            "\"sk-\" filename:.env.staging",
-            "\"hf_\" filename:.env",
-            "\"hf_\" filename:.env.local",
-            "\"ghp_\" filename:.env",
-            "\"ghp_\" filename:.txt",
-            "\"AIza\" filename:.env",
-            "\"api_key\" filename:.env",
-            "\"api_key\" filename:.env.local",
-            "\"secret\" filename:.env",
-            "\"secret\" filename:.env.local",
-            "\"token\" filename:.env",
-            "\"token\" filename:.env.local",
-            "sk- AND \"sk-\" extension:yml",
-            "hf_ AND \"hf_\" extension:yml",
-            "sk-ant- AND \"sk-ant-\" extension:yml",
-            "sk_live_ extension:yml",
-            "rk_live_ extension:yml",
-            "ghp_ extension:yml",
-            "gho_ extension:yml",
-            "ghs_ extension:yml",
-            "AIza extension:yml",
-            "\"SG.\" AND SG. extension:yml",
-            "\"key-\" AND api_key extension:yml",
-            "glpat- extension:yml",
-            "secret_ AND notion extension:yml",
-            "lin_api_ extension:yml",
-            "xoxb- AND \"xoxb-\" extension:yml",
-            "\"AKIA\" AND secret extension:yml",
-            "sk- AND \"sk-\" extension:sh",
-            "ghp_ extension:sh",
-            "AIza extension:sh",
-            "\"AKIA\" AND secret extension:sh",
-            "sk- AND \"sk-\" extension:toml",
-            "ghp_ extension:toml",
-            "\"AKIA\" AND secret extension:tf",
-            "sk- AND \"sk-\" extension:php",
-            "AIza extension:php",
-            "sk- AND \"sk-\" extension:rb",
-            "sk- AND \"sk-\" extension:ts",
-            "ghp_ extension:ts",
-            "sk- AND \"sk-\" extension:go",
-            "secret filename:credentials",
-            "secret filename:.env.staging",
-            "secret filename:.env.prod",
-            "api_key filename:.py",
-            "api_key filename:.rb",
-            "password filename:.env",
-            "token filename:.yml",
-            "secret filename:.yml",
-            "api_key filename:.yml",
-        ]
-        self.issue_queries = [
-            "sk- in:body",
-            "ghp_ in:body",
-            "gho_ in:body",
-            "ghs_ in:body",
-            "AIza in:body",
-            "\"AKIA\" in:body",
-            "sk_live_ in:body",
-            "rk_live_ in:body",
-            "sk-ant- in:body",
-            "hf_ in:body",
-            "\"SG.\" in:body",
-            "glpat- in:body",
-            "xoxb- in:body",
-        ]
-        self.commit_queries = [
-            "sk- in:commit",
-            "ghp_ in:commit",
-            "gho_ in:commit",
-            "AIza in:commit",
-            "\"AKIA\" in:commit",
-            "sk_live_ in:commit",
-            "sk-ant- in:commit",
-        ]
+        self.patterns = PATTERNS
+        self.queries = list(CODE_QUERIES)
+        self.issue_queries = list(ISSUE_QUERIES)
+        self.commit_queries = list(COMMIT_QUERIES)
         self.per_page = 30
-        self.existing_keys: Set[str] = set()
+        self.existing_keys: set[str] = set()
 
-    def get_headers(self) -> Dict[str, str]:
+    def get_headers(self) -> dict[str, str]:
         return {"Authorization": f"token {self.config.current_token}"}
 
     def check_api_key(self, api_key: str, service: str) -> bool:
@@ -178,49 +82,25 @@ class Scanner:
             return validator(api_key)
         return True
 
-    def search_github(self, query: str, page: int = 1) -> Optional[Dict]:
-        while True:
-            if self.stop_event and self.stop_event.is_set():
-                return None
+    def _handle_rate_limit(self) -> bool:
+        """Rotate to the next token, backing off when all are exhausted.
 
-            url = "https://api.github.com/search/code"
-            params = {"q": query, "page": page, "per_page": self.per_page}
-            print(f"[Token {self.config.current_idx+1}/{len(self.config.tokens)}] "
-                  f"Searching GitHub for: {query}")
-                   
-            try:
-                response = self._session.get(
-                    url, 
-                    headers=self.get_headers(),
-                    params=params,
-                    timeout=15
-                )
-
+        Returns True when the caller should retry the request and False when
+        the scan should stop.
+        """
+        self.config.current_idx += 1
+        if self.config.current_idx >= len(self.config.tokens):
+            logger.warning(
+                "All tokens exhausted; sleeping %d seconds...", RATE_LIMIT_BACKOFF_SECONDS
+            )
+            self.config.current_idx = 0
+            for _ in range(RATE_LIMIT_BACKOFF_SECONDS):
                 if self.stop_event and self.stop_event.is_set():
-                    return None
+                    return False
+                time.sleep(1)
+        return True
 
-                if response.status_code == 200:
-                    self._rate_limit_remaining = response.headers.get('X-RateLimit-Remaining', '?')
-                    return response.json()
-                elif response.status_code == 403:
-                    print("Rate limit hit! Switching GitHub token...")
-                    self.config.current_idx += 1
-                    if self.config.current_idx >= len(self.config.tokens):
-                        print("All tokens exhausted. Sleeping for 5 minutes...")
-                        self.config.current_idx = 0
-                        for _ in range(300):
-                            if self.stop_event and self.stop_event.is_set():
-                                return None
-                            time.sleep(1)
-                    continue
-                else:
-                    print(f"GitHub API error: {response.status_code}")
-                    return None
-            except Exception as e:
-                print(f"Network error: {e}")
-                return None
-
-    def _search_api(self, url: str, query: str, page: int = 1, accept: str = "") -> Optional[Dict]:
+    def _search(self, url: str, query: str, page: int = 1, accept: str = "") -> dict | None:
         while True:
             if self.stop_event and self.stop_event.is_set():
                 return None
@@ -228,87 +108,102 @@ class Scanner:
             headers = self.get_headers()
             if accept:
                 headers["Accept"] = accept
+            logger.info(
+                "[Token %d/%d] Searching GitHub for: %s",
+                self.config.current_idx + 1,
+                len(self.config.tokens),
+                query,
+            )
             try:
                 response = self._session.get(url, headers=headers, params=params, timeout=15)
-                if self.stop_event and self.stop_event.is_set():
-                    return None
-                if response.status_code == 200:
-                    self._rate_limit_remaining = response.headers.get('X-RateLimit-Remaining', '?')
-                    return response.json()
-                elif response.status_code == 403:
-                    print("Rate limit hit! Switching GitHub token...")
-                    self.config.current_idx += 1
-                    if self.config.current_idx >= len(self.config.tokens):
-                        print("All tokens exhausted. Sleeping for 5 minutes...")
-                        self.config.current_idx = 0
-                        for _ in range(300):
-                            if self.stop_event and self.stop_event.is_set():
-                                return None
-                            time.sleep(1)
-                    continue
-                else:
-                    print(f"GitHub API error: {response.status_code}")
-                    return None
-            except Exception as e:
-                print(f"Network error: {e}")
+            except requests.RequestException as e:
+                logger.warning("Network error during GitHub search: %s", e)
                 return None
 
-    def search_issues(self, query: str, page: int = 1) -> Optional[Dict]:
-        return self._search_api("https://api.github.com/search/issues", query, page)
+            if self.stop_event and self.stop_event.is_set():
+                return None
+            if response.status_code == 200:
+                self._rate_limit_remaining = response.headers.get("X-RateLimit-Remaining", "?")
+                return response.json()
+            if response.status_code == 403:
+                logger.warning("Rate limit hit; switching GitHub token...")
+                if not self._handle_rate_limit():
+                    return None
+                continue
+            logger.warning("GitHub API error: %s", response.status_code)
+            return None
 
-    def search_commits(self, query: str, page: int = 1) -> Optional[Dict]:
-        return self._search_api(
-            "https://api.github.com/search/commits", query, page,
-            accept="application/vnd.github.cloak-preview"
-        )
+    def search_github(self, query: str, page: int = 1) -> dict | None:
+        return self._search(GITHUB_SEARCH_CODE_URL, query, page)
 
-    def scan_text_results(self, results: Dict, source: str) -> List[Dict]:
+    def search_issues(self, query: str, page: int = 1) -> dict | None:
+        return self._search(GITHUB_SEARCH_ISSUES_URL, query, page)
+
+    def search_commits(self, query: str, page: int = 1) -> dict | None:
+        return self._search(GITHUB_SEARCH_COMMITS_URL, query, page, accept=COMMITS_ACCEPT_HEADER)
+
+    def scan_text_results(self, results: dict, source: str) -> list[dict]:
         found = []
         for item in results.get("items", []):
             if self.stop_event and self.stop_event.is_set():
                 break
             if source == "issue":
                 text = f"{item.get('title', '')} {item.get('body', '')}"
-                repo = item.get("repository_url", "").replace("https://api.github.com/repos/", "")
+                repo = (item.get("repository_url", "") or "").replace(
+                    "https://api.github.com/repos/", ""
+                )
                 url = item.get("html_url", "")
             else:
                 text = item.get("commit", {}).get("message", "")
-                repo = item.get("repository", {}).get("full_name", "")
+                repo = (item.get("repository") or {}).get("full_name", "")
                 url = item.get("html_url", "")
 
             for name, pattern in self.patterns.items():
                 keys = pattern.findall(text)
                 for key in keys:
-                    if key in self.existing_keys:
+                    if key in self.existing_keys or is_placeholder(key):
                         continue
-                    if self.is_placeholder(key):
-                        continue
-                    try:
-                        print(f"\nFound {name} key ({key[:12]}...{key[-6:]}) in {source}: {url}")
-                    except UnicodeEncodeError:
-                        print(f"\nFound {name} key in {source}: {url}")
+                    logger.info(
+                        "Found %s key (%s...%s) in %s: %s",
+                        name,
+                        key[:12],
+                        key[-6:],
+                        source,
+                        url,
+                    )
                     valid = self.check_api_key(key, name)
                     status = "Valid" if valid else "Not Valid"
                     if self.db:
                         self.db.add_activity(f"{name}: {status} ({source})", "info")
                     entry = {
-                        "file_url": url, "repo": repo,
-                        "type": name, "key": key, "valid": valid
+                        "file_url": url,
+                        "repo": repo,
+                        "type": name,
+                        "key": key,
+                        "valid": valid,
                     }
                     found.append(entry)
                     self.existing_keys.add(key)
                     if self.db:
                         owner, repo_url = self._source_repo_info(item, source)
-                        self.db.add_key(key=key, service=name, valid=valid,
-                                        file_url=url, repo=repo,
-                                        owner=owner, repo_url=repo_url)
+                        self.db.add_key(
+                            key=key,
+                            service=name,
+                            valid=valid,
+                            file_url=url,
+                            repo=repo,
+                            owner=owner,
+                            repo_url=repo_url,
+                        )
         return found
 
-    def _source_repo_info(self, item: Dict, source: str):
+    def _source_repo_info(self, item: dict, source: str):
+        repository = item.get("repository") or {}
         if source == "commit":
-            repo_obj = item.get("repository", {}) or {}
-            return (repo_obj.get("owner", {}).get("login", ""),
-                    repo_obj.get("html_url", ""))
+            return (
+                repository.get("owner", {}).get("login", ""),
+                repository.get("html_url", ""),
+            )
         repo_path = item.get("repository_url", "")
         if repo_path:
             parts = [p for p in repo_path.rstrip("/").split("/") if p]
@@ -317,52 +212,39 @@ class Scanner:
                 return owner, f"https://github.com/{owner}/{name}"
         return "", ""
 
-    def is_placeholder(self, key: str) -> bool:
-        placeholders = [
-            "1234567", "xxxxx", "changeme", "placeholder",
-            "your-api", "your_key", "YOUR_", "your-",
-            "example", "test_key", "dummy", "sample",
-        ]
-        lower = key.lower()
-        for p in placeholders:
-            if p in lower:
-                return True
-        if len(set(key[-12:])) <= 3:
-            return True
-        if key.count("x") + key.count("X") > len(key) * 0.25:
-            return True
-        return False
-
-    def get_file_content(self, item: Dict) -> str:
-        repo = item['repository']['full_name']
-        html_url = item.get('html_url', '')
+    def get_file_content(self, item: dict) -> str:
+        repository = item["repository"]
+        repo = repository["full_name"]
+        html_url = item.get("html_url", "")
         sha = ""
-        if '/blob/' in html_url:
-            sha = html_url.split('/blob/', 1)[1].split('/', 1)[0]
-        path = item['path']
+        if "/blob/" in html_url:
+            sha = html_url.split("/blob/", 1)[1].split("/", 1)[0]
+        path = item["path"]
 
         urls = []
         if sha:
-            urls.append(f"https://raw.githubusercontent.com/{repo}/{sha}/{path}")
-        branch = item['repository'].get('default_branch', 'main')
-        urls.append(f"https://raw.githubusercontent.com/{repo}/{branch}/{path}")
+            urls.append(RAW_FILE_URL.format(repo=repo, ref=sha, path=path))
+        default_branch = repository.get("default_branch", "main")
+        urls.append(RAW_FILE_URL.format(repo=repo, ref=default_branch, path=path))
 
         for url in urls:
             if self.stop_event and self.stop_event.is_set():
-                return ''
+                return ""
             try:
                 response = self._session.get(url, timeout=5)
-                if response.status_code == 200:
-                    return response.text
-            except Exception:
+            except requests.RequestException as e:
+                logger.warning("Failed to fetch %s: %s", url, e)
                 continue
-        return ''
+            if response.status_code == 200:
+                return response.text
+        return ""
 
-    def _process_item_result(self, item: Dict, content: str, found: List[Dict]) -> None:
+    def _process_item_result(self, item: dict, content: str, found: list[dict]) -> None:
+        repository = item.get("repository") or {}
         file_url = item.get("html_url", "")
-        repo = item.get("repository", {}).get("full_name", "")
-        owner = item.get("repository", {}).get("owner", {}).get("login", "")
-        repo_url = item.get("repository", {}).get("html_url", "")
+        repo = repository.get("full_name", "")
+        owner = repository.get("owner", {}).get("login", "")
+        repo_url = repository.get("html_url", "")
         path = item.get("path", "")
         for name, pattern in self.patterns.items():
             for key in pattern.findall(content):
@@ -370,42 +252,60 @@ class Scanner:
                     continue
                 if self.db and self.db.key_exists(key):
                     continue
-                valid = VALIDATORS.get(name, lambda k: True)(key)
-                try:
-                    print(f"  Found {name} key: {key[:12]}...{key[-6:]}")
-                except UnicodeEncodeError:
-                    print(f"  Found {name} key: [masked]")
+                valid = VALIDATORS.get(name, _accept_any)(key)
+                logger.info("  Found %s key: %s...%s", name, key[:12], key[-6:])
                 if self.db:
                     self.db.add_key(
-                        key=key, service=name, valid=valid,
-                        file_url=file_url, repo=repo,
-                        owner=owner, repo_url=repo_url, path=path,
+                        key=key,
+                        service=name,
+                        valid=valid,
+                        file_url=file_url,
+                        repo=repo,
+                        owner=owner,
+                        repo_url=repo_url,
+                        path=path,
                     )
                     label = "VALID" if valid else "Invalid"
                     self.db.add_activity(
                         f"{label} {name} key: {key[:12]}...{key[-6:]} in {repo}",
-                        "success" if valid else "warning"
+                        "success" if valid else "warning",
                     )
-                found.append({
-                    "key": key, "type": name, "valid": valid,
-                    "file_url": file_url, "repo": repo,
-                    "owner": owner, "repo_url": repo_url, "path": path,
-                })
+                found.append(
+                    {
+                        "key": key,
+                        "type": name,
+                        "valid": valid,
+                        "file_url": file_url,
+                        "repo": repo,
+                        "owner": owner,
+                        "repo_url": repo_url,
+                        "path": path,
+                    }
+                )
 
     def _is_example_file(self, path: str) -> bool:
         lower = path.lower()
         skip_patterns = [
-            "example", "sample", "template", "fixture", "stub",
-            ".env.example", ".env.sample", ".env.template",
-            "test.", "tests/", "testing.", "spec.", "mock.",
-            "README", "contributing", "docs/",
+            "example",
+            "sample",
+            "template",
+            "fixture",
+            "stub",
+            ".env.example",
+            ".env.sample",
+            ".env.template",
+            "test.",
+            "tests/",
+            "testing.",
+            "spec.",
+            "mock.",
+            "README",
+            "contributing",
+            "docs/",
         ]
-        for p in skip_patterns:
-            if p in lower:
-                return True
-        return False
+        return any(p in lower for p in skip_patterns)
 
-    def scan_results(self, results: Dict) -> List[Dict]:
+    def scan_results(self, results: dict) -> list[dict]:
         found = []
         items = results.get("items", [])
 
@@ -415,10 +315,7 @@ class Scanner:
                 return found
             path = item.get("path", "")
             if self._is_example_file(path):
-                try:
-                    print(f"  Skipped example file: {path}")
-                except UnicodeEncodeError:
-                    print(f"  Skipped example file: [non-ASCII path]")
+                logger.info("  Skipped example file: %s", path)
                 continue
             to_fetch.append(item)
 
@@ -434,85 +331,85 @@ class Scanner:
                 try:
                     content = future.result()
                 except Exception:
-                    content = ''
+                    logger.exception("Failed to fetch file content for %s", item.get("path"))
+                    content = ""
                 self._process_item_result(item, content, found)
 
         return found
 
-    def save_results(self, results: List[Dict]) -> None:
+    def save_results(self, results: list[dict]) -> None:
         try:
             with open(self.result_file, "w", encoding="utf-8") as f:
                 json.dump(results, f, indent=2)
-            print(f"\nResults saved to {self.result_file}")
-        except Exception as e:
-            print(f"Error saving JSON: {e}")
+        except (OSError, TypeError) as e:
+            logger.exception("Error saving results to %s: %s", self.result_file, e)
+        else:
+            logger.info("Results saved to %s", self.result_file)
         if self.db:
             for r in results:
                 self.db.add_key(
-                    key=r["key"], service=r["type"], valid=r["valid"],
-                    file_url=r.get("file_url", ""), repo=r.get("repo", ""),
-                    owner=r.get("owner", ""), repo_url=r.get("repo_url", ""),
+                    key=r["key"],
+                    service=r["type"],
+                    valid=r["valid"],
+                    file_url=r.get("file_url", ""),
+                    repo=r.get("repo", ""),
+                    owner=r.get("owner", ""),
+                    repo_url=r.get("repo_url", ""),
                     path=r.get("path", ""),
                 )
 
-    def _run_queries(self, queries: List[str], search_fn, scan_fn,
-                      progress_prefix: str, all_found: List[Dict]):
-        start_idx = 0
+    def _stop_scan(self, query_index: int, page: int, query: str, progress_prefix: str) -> None:
+        logger.info("Scan stopped by user.")
         if self.db:
-            progress = self.db.load_progress()
-            if progress:
-                text = progress["query_text"]
-                print(f"[resume] loaded progress: idx={progress['query_index']} page={progress['page']} text='{text[:60]}' prefix='{progress_prefix}'")
-                if progress_prefix:
-                    if text.startswith(progress_prefix):
-                        start_idx = progress["query_index"]
-                        print(f"[resume] matched prefix -> start_idx={start_idx}")
-                else:
-                    if not text.startswith("issue:") and not text.startswith("commit:"):
-                        start_idx = progress["query_index"]
-                        print(f"[resume] code phase matched -> start_idx={start_idx}")
+            self.db.add_activity("Scan stopped by user", "warning")
+            self.db.save_progress(query_index, page, f"{progress_prefix}{query}")
+
+    def _resume_index(self, progress_prefix: str) -> int:
+        """Derive the starting query index from saved progress."""
+        if not self.db:
+            return 0
+        progress = self.db.load_progress()
+        if not progress:
+            return 0
+        text = progress["query_text"]
+        logger.info(
+            "[resume] loaded progress: idx=%s page=%s text=%r prefix=%r",
+            progress["query_index"],
+            progress["page"],
+            text[:60],
+            progress_prefix,
+        )
+        if progress_prefix:
+            if text.startswith(progress_prefix):
+                logger.info("[resume] matched prefix -> start_idx=%s", progress["query_index"])
+                return progress["query_index"]
+        elif not text.startswith(("issue:", "commit:")):
+            logger.info("[resume] code phase matched -> start_idx=%s", progress["query_index"])
+            return progress["query_index"]
+        return 0
+
+    def _run_queries(self, queries, search_fn, scan_fn, progress_prefix, all_found):
+        start_idx = self._resume_index(progress_prefix)
 
         for qi in range(start_idx, len(queries)):
             query = queries[qi]
             if self.stop_event and self.stop_event.is_set():
-                print("Scan stopped by user.")
-                if self.db:
-                    self.db.add_activity("Scan stopped by user", "warning")
-                    self.db.save_progress(qi, 1, f"{progress_prefix}{query}")
+                self._stop_scan(qi, 1, query, progress_prefix)
                 return
-            page = 1
-            if qi == start_idx and self.db:
-                p = self.db.load_progress()
-                if p and p["page"] > 1:
-                    pt = p["query_text"]
-                    if progress_prefix:
-                        matches = pt.startswith(progress_prefix)
-                    else:
-                        matches = not pt.startswith("issue:") and not pt.startswith("commit:")
-                    if matches:
-                        page = p["page"]
-                        print(f"[resume] starting from query {qi} page {page}")
-                        if self.db:
-                            self.db.add_activity(f"Resumed query {qi} from page {page}", "info")
+            page = self._resume_page(qi, start_idx, progress_prefix)
             while True:
                 if self.stop_event and self.stop_event.is_set():
-                    print("Scan stopped by user.")
-                    if self.db:
-                        self.db.add_activity("Scan stopped by user", "warning")
-                        self.db.save_progress(qi, page, f"{progress_prefix}{query}")
+                    self._stop_scan(qi, page, query, progress_prefix)
                     return
                 if self.max_pages and page > self.max_pages:
-                    print(f"Reached max pages ({self.max_pages}) for query: {query}")
+                    logger.info("Reached max pages (%s) for query: %s", self.max_pages, query)
                     break
                 results = search_fn(query, page)
                 if self.stop_event and self.stop_event.is_set():
-                    print("Scan stopped by user.")
-                    if self.db:
-                        self.db.add_activity("Scan stopped by user", "warning")
-                        self.db.save_progress(qi, page, f"{progress_prefix}{query}")
+                    self._stop_scan(qi, page, query, progress_prefix)
                     return
-                if not results or 'items' not in results or len(results['items']) == 0:
-                    print(f"No more results for query: {query}")
+                if not results or "items" not in results or len(results["items"]) == 0:
+                    logger.info("No more results for query: %s", query)
                     break
                 found = scan_fn(results)
                 all_found.extend(found)
@@ -522,36 +419,71 @@ class Scanner:
                     self.db.save_progress(qi, page, f"{progress_prefix}{query}")
                 time.sleep(self.delay)
 
-    def run(self) -> None:
-        all_found = []
+    def _resume_page(self, query_index: int, start_idx: int, progress_prefix: str) -> int:
+        if query_index != start_idx or not self.db:
+            return 1
+        progress = self.db.load_progress()
+        if not progress or progress["page"] <= 1:
+            return 1
+        query_text = progress["query_text"]
+        if progress_prefix:
+            matches = query_text.startswith(progress_prefix)
+        else:
+            matches = not query_text.startswith(("issue:", "commit:"))
+        if matches:
+            logger.info("[resume] starting from query %s page %s", query_index, progress["page"])
+            self.db.add_activity(
+                f"Resumed query {query_index} from page {progress['page']}", "info"
+            )
+            return progress["page"]
+        return 1
+
+    def _load_previous_results(self) -> list[dict]:
         self.existing_keys = set()
+        if not self.result_file.exists():
+            return []
         try:
-            if self.result_file.exists():
-                with open(self.result_file, "r", encoding="utf-8") as f:
-                    all_found = json.load(f)
-                    self.existing_keys = {entry["key"] for entry in all_found}
-        except Exception as e:
-            print(f"Warning: could not load previous results: {e}")
+            with open(self.result_file, "r", encoding="utf-8") as f:
+                results = json.load(f)
+            self.existing_keys = {entry["key"] for entry in results}
+            return results
+        except (OSError, json.JSONDecodeError) as e:
+            logger.warning("Could not load previous results: %s", e)
+            return []
+
+    def run(self) -> None:
+        all_found = self._load_previous_results()
 
         self._run_queries(self.queries, self.search_github, self.scan_results, "", all_found)
         if not self.stop_event or not self.stop_event.is_set():
-            self._run_queries(self.issue_queries, self.search_issues,
-                              lambda r: self.scan_text_results(r, "issue"), "issue:", all_found)
+            self._run_queries(
+                self.issue_queries,
+                self.search_issues,
+                lambda r: self.scan_text_results(r, "issue"),
+                "issue:",
+                all_found,
+            )
         if not self.stop_event or not self.stop_event.is_set():
-            self._run_queries(self.commit_queries, self.search_commits,
-                              lambda r: self.scan_text_results(r, "commit"), "commit:", all_found)
+            self._run_queries(
+                self.commit_queries,
+                self.search_commits,
+                lambda r: self.scan_text_results(r, "commit"),
+                "commit:",
+                all_found,
+            )
 
         if not self.stop_event or not self.stop_event.is_set():
-            print("Scan complete. Exiting.")
+            logger.info("Scan complete. Exiting.")
             if self.db:
                 self.db.save_progress(0, 1, "")
         else:
-            print("Scan was stopped. Progress saved for resume.")
+            logger.info("Scan was stopped. Progress saved for resume.")
 
 
 def start_dashboard(host="127.0.0.1", port=5000, db_path="found_keys.db", tokens=None):
     from api.db import Database
-    from dashboard.app import app, start_dashboard as _run_dash
+    from dashboard.app import start_dashboard as _run_dash
+
     db = Database(db_path)
     db.initialize()
 
@@ -559,49 +491,7 @@ def start_dashboard(host="127.0.0.1", port=5000, db_path="found_keys.db", tokens
 
 
 if __name__ == "__main__":
-    # Auto-clean: kill previous server on port 5000, clear caches
-    import subprocess, shutil
-    try:
-        r = subprocess.run(
-            ["powershell", "-Command",
-             "Get-NetTCPConnection -LocalPort 5000 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess"],
-            capture_output=True, text=True, timeout=5
-        )
-        pid = r.stdout.strip()
-        if pid:
-            subprocess.run(["taskkill", "/F", "/PID", pid], capture_output=True)
-            print(f"Killed previous process (PID {pid})")
-    except Exception:
-        pass
-    for d in [Path("__pycache__"), Path("api/__pycache__"), Path("dashboard/__pycache__")]:
-        shutil.rmtree(d, ignore_errors=True)
-    print("Cache cleared")
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    from api.cli import main
 
-    import argparse
-    parser = argparse.ArgumentParser(description="API Instructor - scan GitHub for exposed API keys")
-    parser.add_argument("--scan", action="store_true", help="Run scan in CLI mode (default: start dashboard)")
-    parser.add_argument("-t", "--tokens", help="GitHub token(s), comma-separated")
-    parser.add_argument("--port", type=int, default=5000, help="Dashboard port (default: 5000)")
-    parser.add_argument("--host", default="127.0.0.1", help="Dashboard host (default: 127.0.0.1)")
-    parser.add_argument("--max-pages", type=int, default=50, help="Max pages per query")
-    parser.add_argument("--delay", type=float, default=3.0, help="Delay between requests")
-    parser.add_argument("-o", "--output", default="found_keys.db", help="Database path")
-    args = parser.parse_args()
-
-    if args.scan:
-        if not args.tokens:
-            print("Error: --tokens required for scan mode")
-            sys.exit(1)
-        from api.db import Database
-        db = Database(args.output)
-        db.initialize()
-        config = TokenConfig(tokens=[t.strip() for t in args.tokens.split(",") if t.strip()])
-        scanner = Scanner(config, result_file="found_keys.json", db=db,
-                          max_pages=args.max_pages, delay=args.delay)
-        try:
-            scanner.run()
-        except KeyboardInterrupt:
-            print("\nStopped by user.")
-    else:
-        token_list = [t.strip() for t in args.tokens.split(",") if t.strip()] if args.tokens else None
-        start_dashboard(host=args.host, port=args.port, db_path=args.output, tokens=token_list)
+    main()

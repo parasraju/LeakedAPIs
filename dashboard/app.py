@@ -11,11 +11,20 @@ from werkzeug.exceptions import HTTPException
 logger = logging.getLogger(__name__)
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-app = Flask(__name__, template_folder=Path(__file__).parent / "templates",
-            static_folder=Path(__file__).parent / "static")
+app = Flask(
+    __name__,
+    template_folder=Path(__file__).parent / "templates",
+    static_folder=Path(__file__).parent / "static",
+)
 _db = None
 _scanner_thread = None
-_scanner_status = {"running": False, "progress": "", "query": "", "page": 0, "tokens_remaining": ""}
+_scanner_status = {
+    "running": False,
+    "progress": "",
+    "query": "",
+    "page": 0,
+    "tokens_remaining": "",
+}
 _stop_event = None
 _scan_tokens = None
 _rate_cache = {"core": {}, "search": {}, "updated": 0}
@@ -42,13 +51,20 @@ def revalidate():
     count = 0
     for k in keys:
         from api.validators import VALIDATORS
+
         validator = VALIDATORS.get(k["service"])
         if validator:
             valid = validator(k["key"])
-            _db.add_key(key=k["key"], service=k["service"], valid=valid,
-                        file_url=k.get("file_url", ""), repo=k.get("repo", ""),
-                        owner=k.get("owner", ""), repo_url=k.get("repo_url", ""),
-                        path=k.get("path", ""))
+            _db.add_key(
+                key=k["key"],
+                service=k["service"],
+                valid=valid,
+                file_url=k.get("file_url", ""),
+                repo=k.get("repo", ""),
+                owner=k.get("owner", ""),
+                repo_url=k.get("repo_url", ""),
+                path=k.get("path", ""),
+            )
             status = "Valid" if valid else "Not Valid"
             _db.add_activity(f"{k['service']}: {status} (re-check)", "info")
             count += 1
@@ -86,8 +102,8 @@ def rate_limit():
         )
 
         if r.status_code == 200:
-            d = r.json().get("resources", {})
-            c, s = d.get("core", {}), d.get("search", {})
+            resources = r.json().get("resources") or {}
+            c, s = resources.get("core") or {}, resources.get("search") or {}
 
             _rate_cache.update(
                 core={
@@ -112,19 +128,33 @@ def _start_scan(tokens, max_pages=0):
 
     progress = _db.load_progress()
     if progress:
-        _db.add_activity(f"Loaded saved progress: query_idx={progress['query_index']} page={progress['page']} text='{progress['query_text'][:60]}'", "info")
+        _db.add_activity(
+            f"Loaded saved progress: query_idx={progress['query_index']} page={progress['page']} text='{progress['query_text'][:60]}'",
+            "info",
+        )
 
     _scan_tokens = tokens
     _stop_event = threading.Event()
-    _scanner_status = {"running": True, "progress": "Starting...",
-                       "query": "", "page": 0, "tokens_remaining": ""}
+    _scanner_status = {
+        "running": True,
+        "progress": "Starting...",
+        "query": "",
+        "page": 0,
+        "tokens_remaining": "",
+    }
 
     def run_scan():
         try:
             from ApiInstructor import Scanner, TokenConfig
+
             config = TokenConfig(tokens=tokens)
-            scanner = Scanner(config=config, result_file="found_keys.json",
-                              db=_db, stop_event=_stop_event, max_pages=max_pages)
+            scanner = Scanner(
+                config=config,
+                result_file="found_keys.json",
+                db=_db,
+                stop_event=_stop_event,
+                max_pages=max_pages,
+            )
             original_search = scanner.search_github
 
             def search_with_status(query, page):
@@ -132,7 +162,7 @@ def _start_scan(tokens, max_pages=0):
                 _scanner_status["page"] = page
                 _scanner_status["progress"] = f"Query: {query[:60]}"
                 result = original_search(query, page)
-                remaining = getattr(scanner, '_rate_limit_remaining', None)
+                remaining = getattr(scanner, "_rate_limit_remaining", None)
                 if remaining is not None:
                     _scanner_status["tokens_remaining"] = f"Search: {remaining}"
                 return result
@@ -145,24 +175,25 @@ def _start_scan(tokens, max_pages=0):
                             headers={"Authorization": f"token {tokens[0]}"},
                             timeout=5,
                         )
-                
+
                         if r.status_code == 200:
-                            d = r.json()
-                            c = d.get("resources", {}).get("core", {})
-                            s = d.get("resources", {}).get("search", {})
-                
+                            resources = r.json().get("resources") or {}
+                            c = resources.get("core") or {}
+                            s = resources.get("search") or {}
+
                             _scanner_status["tokens_remaining"] = (
                                 f"Core: {c.get('remaining', '?')}/{c.get('limit', '?')}  "
                                 f"Search: {s.get('remaining', '?')}/{s.get('limit', '?')}"
                             )
-                
+
                     except requests.RequestException:
                         logger.exception("Failed to fetch GitHub rate limit")
-                
+
                     for _ in range(60):
                         if _stop_event and _stop_event.is_set():
                             return
                         time.sleep(1)
+
             t = threading.Thread(target=fetch_rate_limit, daemon=True)
             t.start()
             try:
@@ -170,13 +201,14 @@ def _start_scan(tokens, max_pages=0):
                 scanner.run()
             except (requests.RequestException, OSError) as e:
                 _db.add_activity(f"Scan error: {e}", "error")
-            finally:
-                ...
-            _scanner_status["running"] = False
-            _scanner_status["progress"] = "Idle"
-        except Exception as e:
+                _scanner_status["running"] = False
+                _scanner_status["progress"] = "Error"
+            else:
+                _scanner_status["running"] = False
+                _scanner_status["progress"] = "Idle"
+        except Exception:
             logger.exception("Scan thread crashed")
-            _db.add_activity(f"Scan crashed: {e}", "error")
+            _db.add_activity("Scan thread crashed", "error")
             _scanner_status["running"] = False
             _scanner_status["progress"] = "Error"
 
@@ -254,10 +286,10 @@ def report_key():
             f"https://api.github.com/repos/{repo_full}/issues",
             headers={
                 "Authorization": f"token {token}",
-                "Accept": "application/vnd.github+json"
+                "Accept": "application/vnd.github+json",
             },
             json={"title": title, "body": body},
-            timeout=15
+            timeout=15,
         )
         if r.status_code in (200, 201):
             issue_url = r.json().get("html_url", "")
@@ -270,7 +302,7 @@ def report_key():
 
 
 @app.errorhandler(500)
-def handle_500(e):
+def handle_internal_error(e):
     return jsonify({"error": "Internal server error: " + str(e)}), 500
 
 
@@ -285,9 +317,9 @@ def start_dashboard(db, host="127.0.0.1", port=5000, tokens=None):
     global _db
     _db = db
     _scanner_status["progress"] = "Idle"
-    print(f"\nDashboard: http://{host}:{port}")
+    logger.info("Dashboard: http://%s:%s", host, port)
     if tokens:
         _start_scan(tokens)
-        print("Auto-starting scan from last saved position...")
-    print("Press Ctrl+C to stop.\n")
+        logger.info("Auto-starting scan from last saved position...")
+    logger.info("Press Ctrl+C to stop.")
     app.run(host=host, port=port, debug=False, use_reloader=False)
