@@ -1,11 +1,14 @@
-import threading
+import logging
 import sys
+import threading
 import time
 from pathlib import Path
+
 import requests
 from flask import Flask, jsonify, render_template, request
 from werkzeug.exceptions import HTTPException
 
+logger = logging.getLogger(__name__)
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 app = Flask(__name__, template_folder=Path(__file__).parent / "templates",
@@ -66,22 +69,41 @@ def scan_status():
 @app.route("/api/github/rate_limit")
 def rate_limit():
     now = time.time()
+
     if now - _rate_cache["updated"] < 60 and _rate_cache.get("core"):
         return jsonify(_rate_cache)
+
     token = _scan_tokens[0] if _scan_tokens else None
+
     if not token:
         return jsonify({"core": {}, "search": {}})
+
     try:
-        r = requests.get("https://api.github.com/rate_limit",
-                         headers={"Authorization": f"token {token}"}, timeout=5)
+        r = requests.get(
+            "https://api.github.com/rate_limit",
+            headers={"Authorization": f"token {token}"},
+            timeout=5,
+        )
+
         if r.status_code == 200:
             d = r.json().get("resources", {})
             c, s = d.get("core", {}), d.get("search", {})
-            _rate_cache.update(core={"remaining": c.get("remaining"), "limit": c.get("limit")},
-                               search={"remaining": s.get("remaining"), "limit": s.get("limit")},
-                               updated=now)
-    except Exception:
-        pass
+
+            _rate_cache.update(
+                core={
+                    "remaining": c.get("remaining"),
+                    "limit": c.get("limit"),
+                },
+                search={
+                    "remaining": s.get("remaining"),
+                    "limit": s.get("limit"),
+                },
+                updated=now,
+            )
+
+    except requests.RequestException:
+        logger.exception("Failed to fetch GitHub rate limit")
+
     return jsonify(_rate_cache)
 
 
@@ -98,7 +120,6 @@ def _start_scan(tokens, max_pages=0):
                        "query": "", "page": 0, "tokens_remaining": ""}
 
     def run_scan():
-        global _scanner_status
         try:
             from ApiInstructor import Scanner, TokenConfig
             config = TokenConfig(tokens=tokens)
@@ -122,30 +143,42 @@ def _start_scan(tokens, max_pages=0):
                         r = requests.get(
                             "https://api.github.com/rate_limit",
                             headers={"Authorization": f"token {tokens[0]}"},
-                            timeout=5
+                            timeout=5,
                         )
+                
                         if r.status_code == 200:
                             d = r.json()
                             c = d.get("resources", {}).get("core", {})
                             s = d.get("resources", {}).get("search", {})
-                            _scanner_status["tokens_remaining"] = \
-                                f"Core: {c.get('remaining', '?')}/{c.get('limit', '?')}  Search: {s.get('remaining', '?')}/{s.get('limit', '?')}"
-                    except Exception:
-                        pass
+                
+                            _scanner_status["tokens_remaining"] = (
+                                f"Core: {c.get('remaining', '?')}/{c.get('limit', '?')}  "
+                                f"Search: {s.get('remaining', '?')}/{s.get('limit', '?')}"
+                            )
+                
+                    except requests.RequestException:
+                        logger.exception("Failed to fetch GitHub rate limit")
+                
                     for _ in range(60):
                         if _stop_event and _stop_event.is_set():
                             return
                         time.sleep(1)
-
             t = threading.Thread(target=fetch_rate_limit, daemon=True)
             t.start()
-            scanner.search_github = search_with_status
-            scanner.run()
-        except Exception as e:
-            _db.add_activity(f"Scan error: {e}", "error")
-        finally:
+            try:
+                scanner.search_github = search_with_status
+                scanner.run()
+            except (requests.RequestException, OSError) as e:
+                _db.add_activity(f"Scan error: {e}", "error")
+            finally:
+                ...
             _scanner_status["running"] = False
             _scanner_status["progress"] = "Idle"
+        except Exception as e:
+            logger.exception("Scan thread crashed")
+            _db.add_activity(f"Scan crashed: {e}", "error")
+            _scanner_status["running"] = False
+            _scanner_status["progress"] = "Error"
 
     _scanner_thread = threading.Thread(target=run_scan, daemon=True)
     _scanner_thread.start()
@@ -181,7 +214,6 @@ def scan_start():
 
 @app.route("/api/scan/stop", methods=["POST"])
 def scan_stop():
-    global _stop_event, _scanner_status
     if _stop_event and _scanner_status["running"]:
         _stop_event.set()
         _db.add_activity("Stopping scan...", "warning")
@@ -233,7 +265,7 @@ def report_key():
             return jsonify({"status": "created", "url": issue_url})
         else:
             return jsonify({"error": f"GitHub API error: {r.status_code} {r.text[:200]}"}), 500
-    except Exception as e:
+    except requests.RequestException as e:
         return jsonify({"error": str(e)}), 500
 
 

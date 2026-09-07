@@ -1,5 +1,6 @@
 import argparse
 import sys
+
 from .db import Database
 from .patterns import SERVICES
 
@@ -19,7 +20,7 @@ def parse_args(argv=None):
                       help="SQLite database path (default: found_keys.db)")
     scan.add_argument("-s", "--services", nargs="+",
                       default=SERVICES,
-                      help=f"Services to scan for (default: all)")
+                      help="Services to scan for (default: all)")
     scan.add_argument("--max-pages", type=int, default=50,
                       help="Max pages per query (default: 50)")
     scan.add_argument("--delay", type=float, default=3.0,
