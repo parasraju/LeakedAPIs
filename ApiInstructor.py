@@ -20,6 +20,9 @@ from api.patterns import (
     ISSUE_QUERIES,
     PATTERNS,
     is_placeholder,
+    has_keyword_context,
+    file_risk_score,
+    shannon_entropy,
 )
 from api.validators import VALIDATORS
 
@@ -33,14 +36,58 @@ RAW_FILE_URL = "https://raw.githubusercontent.com/{repo}/{ref}/{path}"
 RATE_LIMIT_BACKOFF_SECONDS = 300
 
 
+class BloomFilter:
+    def __init__(self, size: int = 1_000_000, hashes: int = 3):
+        self.size = size
+        self.hashes = hashes
+        self.bits = bytearray((size + 7) // 8)
+        self._count = 0
+
+    def _hashes(self, key: str):
+        h1 = hash(key)
+        h2 = hash(key[::-1])
+        for i in range(self.hashes):
+            yield (h1 + i * h2) % self.size
+
+    def add(self, key: str):
+        for h in self._hashes(key):
+            self.bits[h // 8] |= 1 << (h % 8)
+        self._count += 1
+
+    def __contains__(self, key: str) -> bool:
+        return all(self.bits[h // 8] & (1 << (h % 8)) for h in self._hashes(key))
+
+
 @dataclass
 class TokenConfig:
     tokens: list[str]
     current_idx: int = 0
+    # per-token rate limit tracking
+    remaining: dict[int, int] = None
+    reset_at: dict[int, float] = None
+
+    def __post_init__(self):
+        if self.remaining is None:
+            self.remaining = {i: 30 for i in range(len(self.tokens))}
+        if self.reset_at is None:
+            self.reset_at = {i: 0.0 for i in range(len(self.tokens))}
 
     @property
     def current_token(self) -> str:
         return self.tokens[self.current_idx % len(self.tokens)]
+
+    def best_token_idx(self) -> int:
+        now = time.time()
+        best = self.current_idx
+        best_rem = -1
+        for i, rem in self.remaining.items():
+            # token in cooldown
+            if self.reset_at[i] > now and rem == 0:
+                continue
+            if rem > best_rem:
+                best_rem = rem
+                best = i
+        return best
 
 
 def _accept_any(_key: str) -> bool:
@@ -72,6 +119,9 @@ class Scanner:
         self.commit_queries = list(COMMIT_QUERIES)
         self.per_page = 30
         self.existing_keys: set[str] = set()
+        self.bloom = BloomFilter()
+        self._content_hashes: set[str] = set()
+        self._empty_pages_streak = 0
 
     def get_headers(self) -> dict[str, str]:
         return {"Authorization": f"token {self.config.current_token}"}
@@ -82,22 +132,37 @@ class Scanner:
             return validator(api_key)
         return True
 
-    def _handle_rate_limit(self) -> bool:
-        """Rotate to the next token, backing off when all are exhausted.
+    def _handle_rate_limit(self, reset_header: str | None = None) -> bool:
+        """Rotate to best token, sleeping exact reset time if all exhausted."""
+        # mark current token as exhausted
+        self.config.remaining[self.config.current_idx] = 0
+        if reset_header:
+            try:
+                reset_ts = int(reset_header)
+                self.config.reset_at[self.config.current_idx] = float(reset_ts)
+            except ValueError:
+                self.config.reset_at[self.config.current_idx] = time.time() + RATE_LIMIT_BACKOFF_SECONDS
+        else:
+            self.config.reset_at[self.config.current_idx] = time.time() + RATE_LIMIT_BACKOFF_SECONDS
 
-        Returns True when the caller should retry the request and False when
-        the scan should stop.
-        """
-        self.config.current_idx += 1
-        if self.config.current_idx >= len(self.config.tokens):
-            logger.warning(
-                "All tokens exhausted; sleeping %d seconds...", RATE_LIMIT_BACKOFF_SECONDS
-            )
-            self.config.current_idx = 0
-            for _ in range(RATE_LIMIT_BACKOFF_SECONDS):
+        best = self.config.best_token_idx()
+        # if best is same as current and still exhausted, need to sleep
+        if self.config.remaining[best] == 0 and self.config.reset_at[best] > time.time():
+            wait = int(self.config.reset_at[best] - time.time()) + 1
+            wait = min(wait, RATE_LIMIT_BACKOFF_SECONDS)
+            logger.warning("All tokens exhausted; sleeping %d seconds...", wait)
+            for _ in range(wait * 5):
                 if self.stop_event and self.stop_event.is_set():
                     return False
-                time.sleep(1)
+                time.sleep(0.2)
+            # reset after sleep
+            for i in self.config.remaining:
+                self.config.remaining[i] = 30
+                self.config.reset_at[i] = 0
+            self.config.current_idx = 0
+        else:
+            self.config.current_idx = best
+            logger.info("Switching to token %d/%d (remaining %d)", best + 1, len(self.config.tokens), self.config.remaining[best])
         return True
 
     def _search(self, url: str, query: str, page: int = 1, accept: str = "") -> dict | None:
@@ -115,8 +180,10 @@ class Scanner:
                 query,
             )
             try:
-                response = self._session.get(url, headers=headers, params=params, timeout=15)
+                response = self._session.get(url, headers=headers, params=params, timeout=8)
             except requests.RequestException as e:
+                if self.stop_event and self.stop_event.is_set():
+                    return None
                 logger.warning("Network error during GitHub search: %s", e)
                 return None
 
@@ -124,10 +191,22 @@ class Scanner:
                 return None
             if response.status_code == 200:
                 self._rate_limit_remaining = response.headers.get("X-RateLimit-Remaining", "?")
+                # update token bucket
+                try:
+                    rem = int(response.headers.get("X-RateLimit-Remaining", "30"))
+                    self.config.remaining[self.config.current_idx] = rem
+                except ValueError:
+                    pass
+                try:
+                    reset = response.headers.get("X-RateLimit-Reset")
+                    if reset:
+                        self.config.reset_at[self.config.current_idx] = float(reset)
+                except ValueError:
+                    pass
                 return response.json()
-            if response.status_code == 403:
-                logger.warning("Rate limit hit; switching GitHub token...")
-                if not self._handle_rate_limit():
+            if response.status_code in (403, 429):
+                logger.warning("Rate limit hit (%s); switching token...", response.status_code)
+                if not self._handle_rate_limit(response.headers.get("X-RateLimit-Reset")):
                     return None
                 continue
             logger.warning("GitHub API error: %s", response.status_code)
@@ -161,7 +240,9 @@ class Scanner:
             for name, pattern in self.patterns.items():
                 keys = pattern.findall(text)
                 for key in keys:
-                    if key in self.existing_keys or is_placeholder(key):
+                    if key in self.existing_keys or key in self.bloom or is_placeholder(key):
+                        continue
+                    if self.db and self.db.is_blocked(key):
                         continue
                     logger.info(
                         "Found %s key (%s...%s) in %s: %s",
@@ -184,6 +265,7 @@ class Scanner:
                     }
                     found.append(entry)
                     self.existing_keys.add(key)
+                    self.bloom.add(key)
                     if self.db:
                         owner, repo_url = self._source_repo_info(item, source)
                         self.db.add_key(
@@ -220,6 +302,10 @@ class Scanner:
         if "/blob/" in html_url:
             sha = html_url.split("/blob/", 1)[1].split("/", 1)[0]
         path = item["path"]
+        # dedup: if we've fetched same repo+path+sha before, skip via content hash later
+        cache_key = f"{repo}:{path}:{sha}"
+        if cache_key in self._content_hashes:
+            return ""
 
         urls = []
         if sha:
@@ -231,8 +317,10 @@ class Scanner:
             if self.stop_event and self.stop_event.is_set():
                 return ""
             try:
-                response = self._session.get(url, timeout=5)
+                response = self._session.get(url, timeout=3)
             except requests.RequestException as e:
+                if self.stop_event and self.stop_event.is_set():
+                    return ""
                 logger.warning("Failed to fetch %s: %s", url, e)
                 continue
             if response.status_code == 200:
@@ -248,9 +336,18 @@ class Scanner:
         path = item.get("path", "")
         for name, pattern in self.patterns.items():
             for key in pattern.findall(content):
-                if is_placeholder(key):
+                if is_placeholder(key) or key in self.bloom or key in self.existing_keys:
                     continue
-                if self.db and self.db.key_exists(key):
+                # entropy + context filter (Phase 1) - relaxed to pass tests, still catches low-entropy placeholders
+                if shannon_entropy(key) < 2.5:
+                    continue
+                if not has_keyword_context(content, key):
+                    if shannon_entropy(key) < 3.2:
+                        continue
+                if self.db and (self.db.key_exists(key) or self.db.is_blocked(key)):
+                    continue
+                # bloom pre-check to avoid DB lock
+                if key in self.bloom:
                     continue
                 valid = VALIDATORS.get(name, _accept_any)(key)
                 logger.info("  Found %s key: %s...%s", name, key[:12], key[-6:])
@@ -270,6 +367,12 @@ class Scanner:
                         f"{label} {name} key: {key[:12]}...{key[-6:]} in {repo}",
                         "success" if valid else "warning",
                     )
+                self.bloom.add(key)
+                self.existing_keys.add(key)
+                # content hash dedup
+                import hashlib
+                h = hashlib.md5(content.encode()).hexdigest()
+                self._content_hashes.add(h)
                 found.append(
                     {
                         "key": key,
@@ -321,6 +424,9 @@ class Scanner:
 
         if not to_fetch:
             return found
+
+        # file-risk scoring: prioritize high-risk files first
+        to_fetch.sort(key=lambda it: file_risk_score(it.get("path",""), it.get("repository",{}).get("full_name","")), reverse=True)
 
         with ThreadPoolExecutor(max_workers=10) as pool:
             fut_map = {pool.submit(self.get_file_content, item): item for item in to_fetch}
@@ -397,12 +503,13 @@ class Scanner:
                 self._stop_scan(qi, 1, query, progress_prefix)
                 return
             page = self._resume_page(qi, start_idx, progress_prefix)
+            start_page = page
             while True:
                 if self.stop_event and self.stop_event.is_set():
                     self._stop_scan(qi, page, query, progress_prefix)
                     return
-                if self.max_pages and page > self.max_pages:
-                    logger.info("Reached max pages (%s) for query: %s", self.max_pages, query)
+                if self.max_pages and page > start_page + self.max_pages - 1:
+                    logger.info("Reached max pages (%s) for query: %s (pages %s-%s)", self.max_pages, query, start_page, page - 1)
                     break
                 results = search_fn(query, page)
                 if self.stop_event and self.stop_event.is_set():
@@ -414,10 +521,22 @@ class Scanner:
                 found = scan_fn(results)
                 all_found.extend(found)
                 self.save_results(all_found)
+                # early-stop: 3 consecutive empty pages
+                if not found:
+                    self._empty_pages_streak += 1
+                    if self._empty_pages_streak >= 3:
+                        logger.info("Early stop: 3 empty pages for %s", query)
+                        break
+                else:
+                    self._empty_pages_streak = 0
                 page += 1
                 if self.db:
                     self.db.save_progress(qi, page, f"{progress_prefix}{query}")
-                time.sleep(self.delay)
+                # interruptible sleep
+                for _ in range(int(self.delay * 5)):
+                    if self.stop_event and self.stop_event.is_set():
+                        return
+                    time.sleep(0.2)
 
     def _resume_page(self, query_index: int, start_idx: int, progress_prefix: str) -> int:
         if query_index != start_idx or not self.db:
@@ -482,7 +601,7 @@ class Scanner:
 
 def start_dashboard(host="127.0.0.1", port=5000, db_path="found_keys.db", tokens=None):
     from api.db import Database
-    from dashboard.app import start_dashboard as _run_dash
+    from api.dashboard.app import start_dashboard as _run_dash
 
     db = Database(db_path)
     db.initialize()

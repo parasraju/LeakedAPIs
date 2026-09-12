@@ -19,6 +19,14 @@ SERVICES = [
     "Mapbox",
     "SlackBot",
     "AWSKey",
+    "Pinecone",
+    "Supabase",
+    "Firebase",
+    "Cloudflare",
+    "Datadog",
+    "Sentry",
+    "Twilio",
+    "OpenRouter",
 ]
 
 PATTERNS = {
@@ -38,6 +46,14 @@ PATTERNS = {
     "Mapbox": re.compile(r"(?:pk|sk)\.[A-Za-z0-9]{60,}\.[A-Za-z0-9]{1,}"),
     "SlackBot": re.compile(r"xox[baprs]-[A-Za-z0-9]{10,}-[A-Za-z0-9]{10,}-[A-Za-z0-9]{24,}"),
     "AWSKey": re.compile(r"AKIA[0-9A-Z]{16}"),
+    "Pinecone": re.compile(r"pcsk_[A-Za-z0-9_-]{30,}"),
+    "Supabase": re.compile(r"sbp_[A-Za-z0-9]{40,}|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}"),
+    "Firebase": re.compile(r"AIza[0-9A-Za-z_-]{35}"),
+    "Cloudflare": re.compile(r"\b[0-9a-fA-F]{40}\b"),
+    "Datadog": re.compile(r"dd[a-z0-9]{32,}"),
+    "Sentry": re.compile(r"sntrys_[A-Za-z0-9_-]{30,}"),
+    "Twilio": re.compile(r"SK[A-Za-z0-9]{32}"),
+    "OpenRouter": re.compile(r"sk-or-v1-[A-Za-z0-9]{48,}"),
 }
 
 ENV_VAR_QUERIES = [
@@ -256,6 +272,51 @@ _PLACEHOLDER_SUBSTRINGS = [
 _X_RATIO = 0.25
 
 _REPEATED_RUN = re.compile(r"(.)\1{5}")
+
+# --- Algorithmic helpers ---
+
+import math
+from collections import Counter
+
+_KEYWORD_CONTEXT = re.compile(r"(api[_-]?key|secret|token|bearer|auth|password|\bkey\b)", re.I)
+
+def shannon_entropy(s: str) -> float:
+    if not s:
+        return 0.0
+    freq = Counter(s)
+    length = len(s)
+    return -sum((c / length) * math.log2(c / length) for c in freq.values())
+
+def has_high_entropy(key: str, threshold: float = 4.2) -> bool:
+    # short keys use lower threshold
+    t = threshold if len(key) >= 30 else 3.5
+    return shannon_entropy(key) >= t
+
+def has_keyword_context(content: str, key: str, window: int = 40) -> bool:
+    idx = content.find(key)
+    if idx == -1:
+        return False
+    start = max(0, idx - window)
+    end = min(len(content), idx + len(key) + window)
+    snippet = content[start:end]
+    return bool(_KEYWORD_CONTEXT.search(snippet))
+
+def file_risk_score(path: str, repo: str = "", stars: int = 0) -> int:
+    lower = path.lower()
+    score = 50
+    # high risk files
+    if any(x in lower for x in [".env", "credentials", "secret", "config"]):
+        score += 30
+    if lower.endswith((".env", ".env.local", ".env.production")):
+        score += 20
+    # low risk
+    if any(x in lower for x in ["example", "sample", "test", "mock", "fixture", ".md", "readme"]):
+        score -= 40
+    if "docs/" in lower:
+        score -= 20
+    if stars > 100:
+        score += 10
+    return max(0, min(100, score))
 
 
 def is_placeholder(key: str) -> bool:

@@ -152,7 +152,7 @@ class Scanner:
 
             matches = self.scan_file(content)
             for service, key in matches:
-                if self.db.key_exists(key):
+                if self.db.key_exists(key) or self.db.is_blocked(key):
                     continue
 
                 logger.info("Found %s key: %s...%s", service, key[:12], key[-6:])

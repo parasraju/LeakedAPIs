@@ -7,7 +7,7 @@ from api.db import Database
 
 @pytest.fixture
 def client(tmp_path):
-    app_module = importlib.import_module("dashboard.app")
+    app_module = importlib.import_module("api.dashboard.app")
     app_module._db = Database(str(tmp_path / "dash.db"))
     app_module._db.initialize()
     app_module._scanner_status.update(running=False, progress="Idle")

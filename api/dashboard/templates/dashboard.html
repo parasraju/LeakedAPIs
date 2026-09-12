@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>API Instructor — Security Scanner</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            ink: '#0A0A0B',
+            canvas: '#FAFAF9',
+            hairline: '#E7E5E4',
+            muted: '#78716C',
+          },
+          fontFamily: { sans: ['Inter','system-ui','sans-serif'], mono: ['JetBrains Mono','monospace'] }
+        }
+      }
+    }
+  </script>
+  <style>
+    html{scroll-behavior:smooth}
+    *{box-sizing:border-box}
+    html{height:100%}
+    body{font-family:Inter,system-ui,sans-serif;background:#FAFAF9;transition:background .2s,color .2s;min-height:100%;overflow-y:auto;-webkit-user-select:text;user-select:text}
+    ::selection{background:#E7E5E4;color:#0A0A0B} html.dark ::selection{background:#27272A;color:#E7E5E4}
+    ::-moz-selection{background:#E7E5E4;color:#0A0A0B}
+    input,textarea{ -webkit-user-select:text; user-select:text; }
+    button, a{-webkit-user-select:none;user-select:none}
+    code, pre, td, th, p, span, h1,h2,h3{ -webkit-user-select:text; user-select:text; }
+    @media (min-width:1024px){html{overflow-y:auto} body{overflow-y:auto}}
+    html.dark body{background:#09090B;color:#E7E5E4}
+    html.dark .card{background:#18181B;border-color:#27272A;color:#E7E5E4}
+    html.dark .input{background:#18181B;border-color:#27272A;color:#E7E5E4}
+    html.dark header{background:rgba(9,9,11,.8);border-color:#27272A}
+    html.dark .bg-stone-50{background:#1A1A1E !important}
+    html.dark .bg-stone-100{background:#1E1E22 !important}
+    html.dark .text-stone-900{color:#E7E5E4 !important}
+    html.dark .border-hairline{border-color:#27272A !important}
+    html.dark .text-muted{color:#A1A1AA !important}
+    @media (max-width:1024px){html,body{overflow:auto;height:auto}}
+    .scroll::-webkit-scrollbar{width:6px;height:6px}
+    .scroll::-webkit-scrollbar-thumb{background:#D6D3D1;border-radius:3px}
+    html.dark .scroll::-webkit-scrollbar-thumb{background:#3F3F46}
+    @keyframes pulse-dot{0%,100%{opacity:1}50%{opacity:.4}}
+    .live-dot{animation:pulse-dot 2s ease-in-out infinite}
+    .card{border:1px solid #E7E5E4;background:white;border-radius:12px;box-shadow:0 1px 2px rgba(0,0,0,.04);transition:background .2s,border-color .2s}
+    .btn-primary{background:#0A0A0B;color:white;border-radius:9999px;font-weight:500;transition:all .15s}
+    html.dark .btn-primary{background:white;color:#0A0A0B}
+    .btn-primary:hover{background:#1C1C1F} html.dark .btn-primary:hover{background:#E7E5E4}
+    .btn-primary:disabled{opacity:.4;cursor:not-allowed}
+    .btn-ghost{border:1px solid #E7E5E4;background:#FAFAF9;border-radius:9999px;transition:all .15s}
+    html.dark .btn-ghost{background:#1A1A1C;border-color:#27272A;color:#E7E5E4}
+    .btn-ghost:hover{background:white} html.dark .btn-ghost:hover{background:#27272A}
+    .input{border:1px solid #E7E5E4;border-radius:8px;transition:border .15s,background .2s}
+    .input:focus{outline:none;border-color:#0A0A0B;box-shadow:0 0 0 3px rgba(10,10,11,.08)} html.dark .input:focus{border-color:#E7E5E4;box-shadow:0 0 0 3px rgba(255,255,255,.1)}
+    .badge{border-radius:9999px;font-size:11px;font-weight:500;padding:2px 8px;border:1px solid}
+    .nav-active{background:rgba(255,255,255,.08)!important;color:white!important}
+    @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+  </style>
+</head>
+<body class="antialiased text-stone-900">
+  <div id="sidebar-overlay" class="fixed inset-0 bg-black/40 z-30 hidden lg:hidden" onclick="toggleSidebar()"></div>
+  <aside id="sidebar" class="fixed inset-y-0 left-0 w-[220px] bg-[#0A0A0B] z-40 flex flex-col border-r border-white/[0.06] -translate-x-full lg:translate-x-0 transition-transform duration-200">
+    <div class="h-[56px] flex items-center gap-3 px-5 border-b border-white/[0.06] shrink-0">
+      <div class="w-8 h-8 rounded-lg bg-white flex items-center justify-center"><i data-lucide="shield" class="w-4 h-4 text-stone-900"></i></div>
+      <div><div class="text-white font-semibold text-[13px] leading-none tracking-tight">API Instructor</div><div class="flex items-center gap-1.5 mt-1"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 live-dot"></span><span class="text-white/50 text-[10px] font-mono">Operational</span></div></div>
+    </div>
+    <div class="flex-1 overflow-y-auto py-3 px-3 space-y-5">
+      <div>
+        <div class="text-white/30 text-[10px] font-mono uppercase tracking-widest px-2 mb-2">Menu</div>
+        <nav class="space-y-1" id="main-nav">
+          <a href="#" data-page="dashboard" class="nav-link nav-active flex items-center gap-3 px-2 py-2 rounded-lg text-sm font-medium"><i data-lucide="layout-dashboard" class="w-4 h-4"></i> Dashboard</a>
+          <a href="#" data-page="scans" class="nav-link flex items-center gap-3 px-2 py-2 rounded-lg text-white/60 hover:text-white hover:bg-white/[0.06] text-sm transition-colors"><i data-lucide="search" class="w-4 h-4"></i> Scans <span class="ml-auto text-[10px] bg-white/10 px-1.5 py-0.5 rounded">3</span></a>
+          <a href="#" data-page="keys" class="nav-link flex items-center gap-3 px-2 py-2 rounded-lg text-white/60 hover:text-white hover:bg-white/[0.06] text-sm transition-colors"><i data-lucide="key-round" class="w-4 h-4"></i> API Keys</a>
+          <a href="#" data-page="services" class="nav-link flex items-center gap-3 px-2 py-2 rounded-lg text-white/60 hover:text-white hover:bg-white/[0.06] text-sm transition-colors"><i data-lucide="layers" class="w-4 h-4"></i> Services</a>
+          <a href="#" data-page="settings" class="nav-link flex items-center gap-3 px-2 py-2 rounded-lg text-white/60 hover:text-white hover:bg-white/[0.06] text-sm transition-colors"><i data-lucide="settings" class="w-4 h-4"></i> Settings</a>
+        </nav>
+      </div>
+      <div class="border-t border-white/[0.06] pt-3">
+        <nav class="space-y-1">
+          <a href="#" data-page="docs" class="nav-link flex items-center gap-3 px-2 py-2 rounded-lg text-white/40 hover:text-white/80 text-sm transition-colors"><i data-lucide="book-open" class="w-4 h-4"></i> Docs</a>
+          <a href="#" data-page="support" class="nav-link flex items-center gap-3 px-2 py-2 rounded-lg text-white/40 hover:text-white/80 text-sm transition-colors"><i data-lucide="life-buoy" class="w-4 h-4"></i> Support</a>
+        </nav>
+      </div>
+      <div class="bg-white/[0.04] rounded-xl p-3 border border-white/[0.06]">
+        <div class="text-white/60 text-xs font-medium">Scan Status</div>
+        <div class="flex items-center gap-2 mt-2"><span id="scan-status-dot" class="w-2 h-2 rounded-full bg-white/30"></span><span id="scan-status" class="text-white text-sm font-medium">Idle</span></div>
+        <div class="mt-2"><div class="text-white/40 text-[11px] font-mono">Current Page</div><div id="current-page" class="text-white/90 text-xs font-mono mt-1 truncate">—</div></div>
+        <div class="mt-2 pt-2 border-t border-white/[0.06] space-y-1.5"><div class="flex justify-between text-xs"><span class="text-white/40">Core</span><span id="rate-core" class="text-white/70 font-mono">—</span></div><div class="flex justify-between text-xs"><span class="text-white/40">Search</span><span id="rate-search" class="text-white/70 font-mono">—</span></div><div id="tokens-remaining" class="text-white/40 text-[10px] font-mono"></div></div>
+      </div>
+    </div>
+    <div class="p-3 border-t border-white/[0.06] shrink-0">
+      <div class="flex items-center justify-between"><span class="text-white/30 text-[11px] font-mono">v1.0</span><span class="flex items-center gap-1.5 text-emerald-400 text-[11px]"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 live-dot"></span> All Systems Operational</span></div>
+    </div>
+  </aside>
+
+  <div class="lg:pl-[220px] min-h-screen flex flex-col">
+    <header class="h-[56px] bg-white/80 dark:bg-stone-900/80 backdrop-blur-md border-b border-hairline sticky top-0 z-20 flex items-center px-4 lg:px-6 gap-4 shrink-0">
+      <button class="lg:hidden p-2 -ml-2" onclick="toggleSidebar()"><i data-lucide="menu" class="w-5 h-5"></i></button>
+      <div class="flex items-center gap-2 text-sm min-w-0"><span class="font-semibold hidden sm:inline">Dashboard</span><span class="text-stone-400 hidden sm:inline">/</span><span id="breadcrumb-sub" class="text-stone-500 truncate">Scan</span><span id="scan-progress-text" class="hidden lg:inline text-xs text-stone-500 font-mono ml-2 truncate"></span></div>
+      <div class="ml-auto flex items-center gap-2 shrink-0">
+        <span class="hidden sm:inline-flex items-center gap-1.5 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-xs font-medium px-3 py-1 rounded-full border border-emerald-200 dark:border-emerald-800"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 live-dot"></span>Live</span>
+        <button id="theme-toggle" onclick="toggleTheme()" class="w-8 h-8 rounded-full border border-hairline flex items-center justify-center hover:bg-stone-50 dark:hover:bg-stone-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 dark:focus-visible:ring-white" aria-label="Toggle dark mode"><i data-lucide="moon" class="w-4 h-4 text-stone-600 dark:hidden"></i><i data-lucide="sun" class="w-4 h-4 text-stone-300 hidden dark:block"></i></button>
+        <div class="w-8 h-8 rounded-full bg-stone-900 dark:bg-white text-white dark:text-stone-900 flex items-center justify-center text-xs font-medium">P</div>
+      </div>
+    </header>
+
+    <main class="flex-1 p-3 lg:p-4 max-w-[1400px] w-full mx-auto flex flex-col">
+      <!-- DASHBOARD PAGE -->
+      <div id="page-dashboard" class="flex flex-col gap-3 lg:gap-4">
+        <!-- Scan Config - compact -->
+        <div class="card overflow-hidden shrink-0">
+          <div class="px-4 lg:px-5 py-3 border-b border-hairline flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div class="min-w-0"><h1 class="text-[15px] font-semibold tracking-tight flex items-center gap-2"><i data-lucide="shield-check" class="w-4 h-4"></i> Scan for API Keys</h1><p class="text-xs text-muted truncate">Scan public repositories for exposed API keys, secrets and tokens.</p></div>
+            <a href="#" data-page="docs" class="nav-link hidden sm:inline-flex items-center gap-1.5 text-xs font-medium text-stone-700 dark:text-stone-300 hover:text-stone-900 border border-hairline rounded-full px-3 py-1.5 hover:bg-stone-50 dark:hover:bg-stone-800 transition-colors shrink-0">View Documentation <i data-lucide="external-link" class="w-3.5 h-3.5"></i></a>
+          </div>
+          <div class="p-4">
+            <div class="grid lg:grid-cols-12 gap-4">
+              <div class="lg:col-span-8 space-y-3">
+                <div>
+                  <label class="text-xs font-medium text-stone-700 dark:text-stone-300 flex items-center gap-1.5"><i data-lucide="key-round" class="w-3 h-3"></i> GitHub Token</label>
+                  <div class="relative mt-1">
+                    <input type="password" id="scan-tokens" class="input w-full h-9 pl-3 pr-10 text-sm font-mono" placeholder="github_pat_xxxxxxxxxxxx" autocomplete="off" spellcheck="false" aria-label="GitHub token">
+                    <button type="button" onclick="toggleTokenVisibility()" class="absolute right-1 top-1 bottom-1 w-8 flex items-center justify-center text-stone-500 hover:text-stone-700 dark:text-stone-400 transition-colors focus-visible:outline-none focus-visible:ring-2 rounded" aria-label="Show token"><i id="eye-icon" data-lucide="eye" class="w-4 h-4"></i></button>
+                  </div>
+                  <p class="text-[11px] text-muted mt-1 flex items-center gap-1"><i data-lucide="lock" class="w-3 h-3"></i> Token is only used for GitHub API. Never logged.</p>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                  <div><label class="text-xs font-medium">Pages to scan</label><input type="number" id="scan-pages" class="input w-full h-9 px-3 text-sm mt-1" value="10" min="1" max="100"></div>
+                  <div><label class="text-xs font-medium">Start from page</label><input type="number" id="start-page" class="input w-full h-9 px-3 text-sm mt-1" value="1" min="1"><p class="text-[10px] text-muted mt-1 hidden lg:block">Leave at 1 to resume</p></div>
+                </div>
+              </div>
+              <div class="lg:col-span-4 flex lg:flex-col gap-2 lg:border-l lg:border-hairline lg:pl-4">
+                <button id="scan-btn" onclick="startScan()" class="btn-primary flex-1 lg:flex-none h-10 px-5 inline-flex items-center justify-center gap-2 text-sm"><i data-lucide="play" class="w-4 h-4"></i> Start Scan</button>
+                <button id="stop-btn" onclick="stopScan()" disabled class="flex-1 lg:flex-none h-10 px-5 inline-flex items-center justify-center gap-2 text-sm font-medium rounded-full border border-stone-900 dark:border-white bg-stone-900 dark:bg-white text-white dark:text-stone-900 hover:bg-stone-800 dark:hover:bg-stone-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"><i data-lucide="square" class="w-3.5 h-3.5 fill-current"></i> Stop Scan</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Status Bar -->
+        <div class="card px-4 py-3 flex flex-col lg:flex-row items-center gap-4 shrink-0">
+          <div class="flex items-center gap-3 w-full lg:w-auto">
+            <div class="relative w-10 h-10 shrink-0">
+              <svg class="w-10 h-10 -rotate-90"><circle cx="20" cy="20" r="16" stroke="#E7E5E4" class="dark:stroke-stone-700" stroke-width="3" fill="none"/><circle id="progress-circle" cx="20" cy="20" r="16" stroke="#0A0A0B" class="dark:stroke-white" stroke-width="3" fill="none" stroke-linecap="round" stroke-dasharray="100.5" stroke-dashoffset="100.5" class="transition-all duration-500"/></svg>
+              <div class="absolute inset-0 flex items-center justify-center"><i id="status-icon" data-lucide="shield" class="w-4 h-4 text-stone-400"></i></div>
+            </div>
+            <div class="min-w-0"><div id="scan-status-title" class="text-sm font-semibold">Ready to scan</div><div id="scan-status-desc" class="text-xs text-muted truncate">Configure and click Start Scan to begin.</div></div>
+          </div>
+          <div class="h-px lg:h-8 w-full lg:w-px bg-hairline"></div>
+          <div class="grid grid-cols-3 gap-4 w-full lg:flex-1">
+            <div><div class="text-[10px] font-mono uppercase tracking-widest text-muted">Pages scanned</div><div class="text-base font-semibold mt-1"><span id="pages-scanned">0</span> <span class="text-muted font-normal text-xs">/ <span id="pages-total">10</span></span></div><div class="w-full h-1 bg-stone-100 dark:bg-stone-800 rounded-full mt-1.5 overflow-hidden"><div id="pages-bar" class="h-full bg-stone-900 dark:bg-white transition-all duration-500" style="width:0%"></div></div></div>
+            <div><div class="text-[10px] font-mono uppercase tracking-widest text-muted">Keys found</div><div id="keys-found" class="text-base font-semibold mt-1">0</div><div class="text-[11px] text-muted">across services</div></div>
+            <div><div class="text-[10px] font-mono uppercase tracking-widest text-muted">Rate limit</div><div id="rate-limit-text" class="text-base font-semibold mt-1 font-mono">5,000 / 5,000</div><div class="w-full h-1 bg-stone-100 dark:bg-stone-800 rounded-full mt-1.5 overflow-hidden"><div id="rate-bar" class="h-full bg-emerald-500 transition-all duration-500" style="width:100%"></div></div></div>
+          </div>
+        </div>
+
+        <!-- Stats - compact -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 shrink-0">
+          <div class="card p-4">
+            <div class="flex items-center justify-between"><div class="w-7 h-7 rounded-lg bg-stone-100 dark:bg-stone-800 flex items-center justify-center"><i data-lucide="key-round" class="w-3.5 h-3.5 text-stone-700 dark:text-stone-300"></i></div><span class="text-[10px] font-mono text-muted"><span id="stat-services-inline">0</span> services</span></div>
+            <div class="text-[10px] font-mono uppercase tracking-widest text-muted mt-3">Total Keys</div><div id="stat-total" class="text-2xl font-semibold mt-0.5 tracking-tight">0</div>
+          </div>
+          <div class="card p-4">
+            <div class="flex items-center justify-between"><div class="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center"><i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-emerald-600"></i></div><span class="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800"><i data-lucide="trending-up" class="w-3 h-3"></i><span id="valid-trend">0%</span></span></div>
+            <div class="text-[10px] font-mono uppercase tracking-widest text-muted mt-3 flex items-center gap-1"><i data-lucide="bar-chart-3" class="w-3 h-3"></i> Valid Keys</div><div class="flex items-baseline gap-2"><div id="stat-valid" class="text-2xl font-semibold mt-0.5 tracking-tight text-emerald-600">0</div><i data-lucide="line-chart" class="w-4 h-4 text-emerald-500 opacity-60"></i></div><div id="stat-valid-pct" class="text-xs text-muted mt-0.5 flex items-center gap-1"><i data-lucide="activity" class="w-3 h-3"></i> 0% of total</div>
+          </div>
+          <div class="card p-4">
+            <div class="flex items-center justify-between"><div class="w-7 h-7 rounded-lg bg-red-50 dark:bg-red-900/20 flex items-center justify-center"><i data-lucide="x-circle" class="w-3.5 h-3.5 text-red-600"></i></div><span class="inline-flex items-center gap-1 text-[10px] font-medium text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/30 px-2 py-0.5 rounded-full border border-red-200 dark:border-red-800"><i data-lucide="trending-down" class="w-3 h-3"></i><span id="invalid-trend">0%</span></span></div>
+            <div class="text-[10px] font-mono uppercase tracking-widest text-muted mt-3 flex items-center gap-1"><i data-lucide="bar-chart-3" class="w-3 h-3"></i> Invalid Keys</div><div class="flex items-baseline gap-2"><div id="stat-invalid" class="text-2xl font-semibold mt-0.5 tracking-tight text-red-600">0</div><i data-lucide="line-chart" class="w-4 h-4 text-red-500 opacity-60"></i></div><div id="stat-invalid-pct" class="text-xs text-muted mt-0.5 flex items-center gap-1"><i data-lucide="activity" class="w-3 h-3"></i> 0% of total</div>
+          </div>
+          <div class="card p-4">
+            <div class="w-7 h-7 rounded-lg bg-stone-100 dark:bg-stone-800 flex items-center justify-center"><i data-lucide="layers" class="w-3.5 h-3.5 text-stone-700 dark:text-stone-300"></i></div>
+            <div class="text-[10px] font-mono uppercase tracking-widest text-muted mt-3">Services</div><div id="stat-services" class="text-2xl font-semibold mt-0.5 tracking-tight">0</div><div id="stat-services-list" class="text-xs text-muted mt-0.5 truncate">—</div>
+          </div>
+        </div>
+
+        <!-- Bottom: Keys + Activity - left stretches to match right column -->
+        <div class="grid grid-cols-12 gap-4 items-stretch">
+          <div class="col-span-12 lg:col-span-8 card overflow-hidden flex flex-col self-stretch">
+            <div class="px-4 py-3 border-b border-hairline shrink-0">
+              <div class="flex items-center justify-between"><div><h2 class="text-sm font-semibold tracking-tight">Detected API Keys</h2><p class="text-xs text-muted hidden sm:block">Potentially exposed keys found in public repositories.</p></div><span id="keys-count" class="hidden sm:inline-flex text-xs font-mono bg-stone-100 dark:bg-stone-800 px-2 py-1 rounded-full">0 keys</span></div>
+              <div class="flex flex-col sm:flex-row gap-2 mt-3">
+                <div class="relative flex-1"><i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400"></i><input id="key-search" placeholder="Search keys, repos, or services..." class="input w-full h-8 pl-9 pr-3 text-sm" oninput="filterKeys()"></div>
+                <div class="flex gap-2">
+                  <select id="service-filter" class="input h-8 px-2 text-xs w-24 sm:w-32" onchange="filterKeys()"><option value="all">All Services</option></select>
+                  <select id="valid-filter" class="input h-8 px-2 text-xs w-24 sm:w-32" onchange="filterKeys()"><option value="all">All Status</option><option value="valid">Valid</option><option value="invalid">Invalid</option></select>
+                  <button onclick="revalidateAll()" class="btn-ghost h-8 px-3 text-xs font-medium inline-flex items-center gap-1.5 whitespace-nowrap"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> <span class="hidden sm:inline">Re-check</span></button>
+                </div>
+              </div>
+            </div>
+            <div class="flex-1 overflow-auto scroll min-h-[520px] lg:min-h-[640px]">
+                <table class="w-full text-sm">
+                  <thead class="bg-stone-50 dark:bg-stone-800 border-b border-hairline sticky top-0 z-10"><tr class="text-left text-[11px] font-mono text-muted uppercase tracking-widest"><th class="px-4 py-2.5 font-medium">Key (Preview)</th><th class="px-3 py-2.5 font-medium hidden sm:table-cell">Service</th><th class="px-3 py-2.5 font-medium">Status</th><th class="px-3 py-2.5 font-medium hidden md:table-cell">Repository</th><th class="px-3 py-2.5 font-medium hidden lg:table-cell">Found</th><th class="px-3 py-2.5 w-8"></th></tr></thead>
+                  <tbody id="keys-body" class="divide-y divide-hairline"><tr><td colspan="6" class="text-center py-8"><div class="flex flex-col items-center gap-2 text-muted"><i data-lucide="search-x" class="w-5 h-5"></i><span class="text-sm">No keys yet — start a scan</span></div></td></tr></tbody>
+                </table>
+            </div>
+          </div>
+          <div class="col-span-12 lg:col-span-4 flex flex-col gap-4">
+            <div class="card overflow-hidden flex flex-col">
+              <div class="px-4 py-3 border-b border-hairline flex items-center justify-between shrink-0"><h3 class="text-sm font-semibold flex items-center gap-2"><i data-lucide="activity" class="w-4 h-4 text-stone-500"></i> Activity</h3><span id="activity-count" class="text-[11px] font-mono bg-stone-100 dark:bg-stone-800 px-2 py-0.5 rounded-full">0</span></div>
+              <div class="relative">
+                <div class="absolute left-[19px] top-4 bottom-4 w-px bg-stone-200 dark:bg-stone-700 hidden sm:block"></div>
+                <ul id="activity-list" class="relative p-3 space-y-0 max-h-[520px] overflow-y-auto scroll"><li class="text-center text-muted text-xs py-6">No activity yet</li></ul>
+              </div>
+            </div>
+            <div class="card overflow-hidden hidden lg:flex flex-col max-h-[320px] shrink-0">
+              <div class="px-4 py-3 border-b border-hairline shrink-0"><h3 class="text-sm font-semibold">Services Breakdown</h3></div>
+              <ul id="services-list" class="divide-y divide-hairline overflow-y-auto scroll flex-1"><li class="text-center text-muted text-xs py-6">No data yet</li></ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SCANS PAGE -->
+      <div id="page-scans" class="hidden flex flex-col gap-4">
+        <div class="card p-5 shrink-0"><h2 class="text-base font-semibold flex items-center gap-2"><i data-lucide="search" class="w-5 h-5"></i> Scans History</h2><p class="text-sm text-muted mt-1">Recent scan runs and their results.</p></div>
+        <div id="scans-list" class="card overflow-hidden divide-y divide-hairline"><div class="p-8 text-center text-muted text-sm">No scans yet — start one from Dashboard</div></div>
+      </div>
+
+      <!-- API KEYS PAGE -->
+      <div id="page-keys" class="hidden flex flex-col gap-4">
+        <div class="card p-4 shrink-0"><h2 class="text-base font-semibold flex items-center gap-2"><i data-lucide="key-round" class="w-5 h-5"></i> All API Keys</h2><p class="text-xs text-muted mt-1">Full list with reporting. Keys are masked — full values never displayed.</p>
+          <div class="flex flex-col sm:flex-row gap-2 mt-3">
+            <div class="relative flex-1"><i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400"></i><input id="keys-page-search" placeholder="Search all keys..." class="input w-full h-8 pl-9 pr-3 text-sm" oninput="filterKeysPage()"></div>
+            <select id="keys-page-service" class="input h-8 px-3 text-sm w-32" onchange="filterKeysPage()"><option value="all">All Services</option></select>
+            <select id="keys-page-status" class="input h-8 px-3 text-sm w-32" onchange="filterKeysPage()"><option value="all">All Status</option><option value="valid">Valid</option><option value="invalid">Invalid</option></select>
+            <button onclick="clearInvalidKeys(event)" class="h-8 px-3 text-xs font-medium whitespace-nowrap rounded-full border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 inline-flex items-center gap-1.5"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Clear Invalid</button>
+          </div>
+        </div>
+        <div class="card overflow-hidden"><div class="overflow-auto scroll" style="max-height:70vh"><table class="w-full text-sm"><thead class="bg-stone-50 dark:bg-stone-800 border-b border-hairline sticky top-0"><tr class="text-left text-[11px] font-mono text-muted uppercase tracking-widest"><th class="px-4 py-2.5">Key</th><th class="px-3 py-2.5 hidden sm:table-cell">Service</th><th class="px-3 py-2.5">Status</th><th class="px-3 py-2.5 hidden md:table-cell">Repo</th><th class="px-3 py-2.5 hidden lg:table-cell">Found</th><th class="px-3 py-2.5">Report</th><th class="px-3 w-8"></th></tr></thead><tbody id="keys-page-body" class="divide-y divide-hairline"></tbody></table></div></div>
+      </div>
+
+      <!-- SERVICES PAGE -->
+      <div id="page-services" class="hidden flex flex-col gap-4">
+        <div class="card p-5 shrink-0"><h2 class="text-base font-semibold flex items-center gap-2"><i data-lucide="layers" class="w-5 h-5"></i> Services</h2><p class="text-sm text-muted mt-1">Supported services, patterns, and detection stats.</p></div>
+        <div id="services-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+      </div>
+
+      <!-- SETTINGS PAGE -->
+      <div id="page-settings" class="hidden flex flex-col gap-4 flex-1 min-h-0 overflow-hidden">
+        <div class="card p-5 shrink-0"><h2 class="text-base font-semibold flex items-center gap-2"><i data-lucide="settings" class="w-5 h-5"></i> Settings</h2><p class="text-sm text-muted mt-1">Manage scanner preferences and appearance.</p></div>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 overflow-y-auto">
+          <div class="card p-5 space-y-3">
+            <h3 class="font-medium flex items-center gap-2"><i data-lucide="palette" class="w-4 h-4"></i> Appearance</h3>
+            <div class="flex items-center justify-between py-3 border-t border-hairline"><span class="text-sm">Dark Mode</span><button onclick="toggleTheme()" class="relative w-11 h-6 rounded-full bg-stone-200 dark:bg-stone-700 transition-colors focus-visible:outline-none focus-visible:ring-2" aria-label="Toggle dark mode"><span id="theme-dot" class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform"></span></button></div>
+            <div class="flex items-center justify-between py-2 border-t border-hairline"><span class="text-sm">Notifications</span><span class="text-xs text-muted">Toast + Activity</span></div>
+            <p class="text-xs text-muted">Dark mode respects 4.5:1 contrast per UX guidelines. Toggle persists via localStorage.</p>
+          </div>
+          <div class="card p-5 space-y-3">
+            <h3 class="font-medium flex items-center gap-2"><i data-lucide="sliders" class="w-4 h-4"></i> Scanner</h3>
+            <div class="text-sm flex justify-between"><span class="text-muted">Default Pages</span><span class="font-mono">10</span></div><div class="text-sm flex justify-between"><span class="text-muted">Delay</span><span class="font-mono">3s</span></div><div class="text-sm flex justify-between"><span class="text-muted">Database</span><span class="font-mono">found_keys.db</span></div>
+            <button onclick="if(confirm('Clear all invalid keys?')) fetch('/api/keys/clear-invalid',{method:'POST'}).then(()=>refresh())" class="mt-2 w-full h-9 rounded-full border border-red-200 bg-red-50 text-red-700 text-sm font-medium hover:bg-red-100 transition-colors">Clear Invalid Keys</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- DOCS PAGE - Premium -->
+      <div id="page-docs" class="hidden flex flex-col gap-4">
+        <div class="card overflow-hidden shrink-0">
+          <div class="bg-gradient-to-br from-stone-900 to-stone-800 dark:from-stone-800 dark:to-stone-900 px-6 py-8 text-white">
+            <div class="flex items-center gap-2 text-xs font-mono text-white/60"><i data-lucide="book-open" class="w-4 h-4"></i> Documentation <span class="bg-white/10 px-2 py-0.5 rounded-full">v1.0</span></div>
+            <h2 class="text-2xl font-semibold mt-3 tracking-tight">API Instructor Docs</h2>
+            <p class="text-sm text-white/70 mt-2 max-w-2xl">Scan GitHub for exposed secrets with precision. Entropy filtering, Bloom dedup, and live validation — developer-first, enterprise-ready.</p>
+            <div class="flex gap-2 mt-4"><span class="text-xs bg-white text-stone-900 px-3 py-1 rounded-full font-medium">Quick Start 2 min</span><span class="text-xs border border-white/20 text-white px-3 py-1 rounded-full">24 services</span><span class="text-xs border border-white/20 text-white px-3 py-1 rounded-full">5000 req/hr</span></div>
+          </div>
+          <div class="px-6 py-3 bg-stone-50 dark:bg-stone-800/50 border-t border-hairline flex items-center gap-2 text-xs">
+            <div class="relative flex-1 max-w-md"><i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400"></i><input id="docs-search" placeholder="Search docs..." class="input w-full h-8 pl-9 pr-3 text-sm" oninput="filterDocs()"></div>
+            <span class="hidden sm:inline text-muted">⌘K</span>
+          </div>
+        </div>
+        <div class="grid grid-cols-12 gap-4">
+          <div class="col-span-12 lg:col-span-3">
+            <div class="card p-3 sticky top-[72px]">
+              <div class="text-[11px] font-mono uppercase tracking-widest text-muted px-2 py-1">Contents</div>
+              <nav class="space-y-1 mt-2" id="docs-nav">
+                <a href="#docs-overview" class="docs-link flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm bg-stone-900 dark:bg-white text-white dark:text-stone-900 font-medium"><i data-lucide="compass" class="w-4 h-4"></i> Overview</a>
+                <a href="#docs-install" class="docs-link flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm text-muted hover:bg-stone-100 dark:hover:bg-stone-800"><i data-lucide="download" class="w-4 h-4"></i> Installation</a>
+                <a href="#docs-config" class="docs-link flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm text-muted hover:bg-stone-100 dark:hover:bg-stone-800"><i data-lucide="sliders" class="w-4 h-4"></i> Configuration</a>
+                <a href="#docs-scan" class="docs-link flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm text-muted hover:bg-stone-100 dark:hover:bg-stone-800"><i data-lucide="search" class="w-4 h-4"></i> Scanning</a>
+                <a href="#docs-security" class="docs-link flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm text-muted hover:bg-stone-100 dark:hover:bg-stone-800"><i data-lucide="shield-check" class="w-4 h-4"></i> Security</a>
+                <a href="#docs-api" class="docs-link flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm text-muted hover:bg-stone-100 dark:hover:bg-stone-800"><i data-lucide="code-2" class="w-4 h-4"></i> API Reference</a>
+                <a href="#docs-faq" class="docs-link flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm text-muted hover:bg-stone-100 dark:hover:bg-stone-800"><i data-lucide="help-circle" class="w-4 h-4"></i> FAQ</a>
+              </nav>
+              <div class="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl">
+                <div class="text-xs font-medium text-amber-800 dark:text-amber-300 flex items-center gap-1.5"><i data-lucide="lightbulb" class="w-3.5 h-3.5"></i> Pro Tip</div>
+                <p class="text-xs text-amber-700 dark:text-amber-300/80 mt-1">Use fine-grained <code>github_pat_...</code> with public repos read-only for least privilege.</p>
+              </div>
+            </div>
+          </div>
+          <div class="col-span-12 lg:col-span-9 space-y-4" id="docs-content">
+            <div id="docs-overview" class="card p-6">
+              <h3 class="font-semibold flex items-center gap-2"><i data-lucide="compass" class="w-4 h-4"></i> Overview</h3>
+              <p class="text-sm text-muted mt-2">API Instructor continuously searches GitHub code, issues, and commits for leaked keys across 24 services. Each hit is entropy-filtered, context-checked, Bloom-deduped, and live-validated.</p>
+              <div class="grid grid-cols-3 gap-3 mt-4">
+                <div class="border border-hairline rounded-xl p-3 text-center"><div class="text-lg font-semibold">24</div><div class="text-xs text-muted">Services</div></div>
+                <div class="border border-hairline rounded-xl p-3 text-center"><div class="text-lg font-semibold">3.2k</div><div class="text-xs text-muted">Queries</div></div>
+                <div class="border border-hairline rounded-xl p-3 text-center"><div class="text-lg font-semibold">30</div><div class="text-xs text-muted">Req/min</div></div>
+              </div>
+            </div>
+            <div id="docs-install" class="card p-6">
+              <h3 class="font-semibold flex items-center gap-2"><i data-lucide="download" class="w-4 h-4"></i> Installation</h3>
+              <div class="mt-3">
+                <div class="flex items-center justify-between"><span class="text-xs font-mono text-muted">Terminal</span><button onclick="navigator.clipboard.writeText(this.nextElementSibling.innerText)" class="text-xs flex items-center gap-1 hover:text-stone-900 dark:hover:text-white"><i data-lucide="copy" class="w-3 h-3"></i> Copy</button></div>
+                <pre class="bg-stone-900 dark:bg-stone-950 text-stone-100 p-4 rounded-xl overflow-x-auto text-xs font-mono mt-1">pip install -r requirements.txt
+python main.py dashboard --port 5000
+# open http://127.0.0.1:5000</pre>
+              </div>
+              <div class="mt-3 flex items-center gap-2 text-xs"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> Python 3.10+ • Flask • SQLite WAL • Tailwind</div>
+            </div>
+            <div id="docs-config" class="card p-6">
+              <h3 class="font-semibold flex items-center gap-2"><i data-lucide="sliders" class="w-4 h-4"></i> Configuration</h3>
+              <table class="w-full text-sm mt-3 border border-hairline rounded-xl overflow-hidden"><thead class="bg-stone-50 dark:bg-stone-800 text-xs font-mono text-muted"><tr><th class="px-3 py-2 text-left">Param</th><th class="px-3 py-2 text-left">Default</th><th class="px-3 py-2 text-left">Description</th></tr></thead><tbody class="divide-y divide-hairline text-sm"><tr><td class="px-3 py-2 font-mono text-xs">--port</td><td class="px-3 py-2 font-mono">5000</td><td class="px-3 py-2 text-muted">Dashboard port</td></tr><tr><td class="px-3 py-2 font-mono text-xs">--max-pages</td><td class="px-3 py-2 font-mono">20</td><td class="px-3 py-2 text-muted">Pages per query</td></tr><tr><td class="px-3 py-2 font-mono text-xs">--delay</td><td class="px-3 py-2 font-mono">3.0s</td><td class="px-3 py-2 text-muted">Delay between requests</td></tr></tbody></table>
+            </div>
+            <div id="docs-scan" class="card p-6">
+              <h3 class="font-semibold flex items-center gap-2"><i data-lucide="search" class="w-4 h-4"></i> Scanning</h3>
+              <ol class="list-decimal list-inside text-sm text-muted mt-2 space-y-1"><li>Enter <code class="bg-stone-100 dark:bg-stone-800 px-1.5 py-0.5 rounded text-xs font-mono">github_pat_...</code> (public repos read-only)</li><li>Set Pages 10, Start 1 for fresh scan</li><li>Click <strong class="text-stone-900 dark:text-white">Start Scan</strong> — progress updates via <code>/api/scan/status</code> every 3s</li><li>Rate limit 30 req/min auto-handled via token bucket</li></ol>
+              <div class="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl text-xs text-blue-800 dark:text-blue-300 flex gap-2"><i data-lucide="info" class="w-4 h-4 shrink-0"></i> Early-stop after 3 empty pages saves ~40% API calls.</div>
+            </div>
+            <div id="docs-security" class="card p-6">
+              <h3 class="font-semibold flex items-center gap-2"><i data-lucide="shield-check" class="w-4 h-4"></i> Security</h3>
+              <ul class="list-disc list-inside text-sm text-muted mt-2 space-y-1"><li>Tokens never logged, never in URL — masked <code>••••••••</code></li><li>Keys masked <code>sk_test_••••••••••••</code> in table, modal, logs</li><li>Cleared invalids added to <code>blocked_keys</code> — never reappear</li><li>Entropy &gt;2.5 + keyword context window 40 chars reduces false positives</li></ul>
+            </div>
+            <div id="docs-api" class="card p-6">
+              <h3 class="font-semibold flex items-center gap-2"><i data-lucide="code-2" class="w-4 h-4"></i> API Reference</h3>
+              <div class="space-y-2 mt-3 text-sm font-mono">
+                <div class="flex items-center gap-2"><span class="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 rounded text-xs">GET</span> <span>/api/stats</span><span class="text-muted">— totals, valid/invalid, services</span></div>
+                <div class="flex items-center gap-2"><span class="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 rounded text-xs">GET</span> <span>/api/keys?limit=500</span><span class="text-muted">— masked keys</span></div>
+                <div class="flex items-center gap-2"><span class="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded text-xs">POST</span> <span>/api/scan/start</span><span class="text-muted">— {tokens, pages, start_page}</span></div>
+              </div>
+            </div>
+            <div id="docs-faq" class="card p-6">
+              <h3 class="font-semibold flex items-center gap-2"><i data-lucide="help-circle" class="w-4 h-4"></i> FAQ</h3>
+              <details class="mt-3 border border-hairline rounded-xl"><summary class="px-4 py-3 text-sm font-medium cursor-pointer">Why invalid jumps 10→100?</summary><p class="px-4 pb-3 text-sm text-muted">Normal — GitHub has many revoked keys. Valid stays 0-5, invalid climbs fast. Clear after scan stops.</p></details>
+              <details class="border border-hairline rounded-xl mt-2"><summary class="px-4 py-3 text-sm font-medium cursor-pointer">Failed to fetch on Clear?</summary><p class="px-4 pb-3 text-sm text-muted">Stop scan first — Clear is 409 while scanning. DB is WAL + blocked_keys persistent.</p></details>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SUPPORT PAGE -->
+      <div id="page-support" class="hidden flex flex-col gap-4 flex-1 min-h-0 overflow-y-auto">
+        <div class="card p-5 shrink-0"><h2 class="text-base font-semibold flex items-center gap-2"><i data-lucide="life-buoy" class="w-5 h-5"></i> Support</h2><p class="text-sm text-muted mt-1">Get help.</p></div>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div class="card p-5"><h3 class="font-medium flex items-center gap-2"><i data-lucide="github" class="w-4 h-4"></i> GitHub</h3><p class="text-sm text-muted mt-2">Report issues at <a href="https://github.com/parasraju/LeakedAPIs" target="_blank" class="text-blue-600 dark:text-blue-400 hover:underline">parasraju/LeakedAPIs</a></p></div>
+          <div class="card p-5"><h3 class="font-medium flex items-center gap-2"><i data-lucide="mail" class="w-4 h-4"></i> Contact</h3><p class="text-sm text-muted mt-2">Include <code>/api/stats</code> and <code>/api/activity</code> output when reporting.</p></div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <script>
+    let allKeys=[];let allServices=[];
+    function isSelecting(){ const s=window.getSelection(); return s && !s.isCollapsed && s.toString().length>0; }
+    function parseDate(s){if(!s)return null;let t=s.trim();if(t.endsWith('Z')||/[+-]\d{2}:\d{2}$/.test(t)){const d=new Date(t);return isNaN(d)?null:d;}if(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(t)){t=t.replace(' ','T')+'Z';const d=new Date(t);return isNaN(d)?null:d;}const d=new Date(t);return isNaN(d)?null:d;}
+    function toggleSidebar(){const sb=document.getElementById('sidebar'),ov=document.getElementById('sidebar-overlay');const open=sb.classList.contains('-translate-x-full');sb.classList.toggle('-translate-x-full',!open);ov.classList.toggle('hidden',!open);}
+    function toggleTokenVisibility(){const inp=document.getElementById('scan-tokens'),icon=document.getElementById('eye-icon');const isPass=inp.type==='password';inp.type=isPass?'text':'password';icon.setAttribute('data-lucide',isPass?'eye-off':'eye');lucide.createIcons();}
+    function toggleTheme(){
+      const isDark=document.documentElement.classList.toggle('dark');
+      localStorage.setItem('theme',isDark?'dark':'light');
+      const dot=document.getElementById('theme-dot'); if(dot) dot.style.transform=isDark?'translateX(20px)':'translateX(0)';
+      lucide.createIcons();
+    }
+    function filterDocs(){
+      const q=document.getElementById('docs-search')?.value.toLowerCase()||'';
+      document.querySelectorAll('#docs-content > div').forEach(card=>{
+        const text=card.innerText.toLowerCase();
+        card.style.display=text.includes(q)?'':'none';
+      });
+    }
+    (function(){if(localStorage.getItem('theme')==='dark'){document.documentElement.classList.add('dark');setTimeout(()=>{const d=document.getElementById('theme-dot');if(d)d.style.transform='translateX(20px)';},50);}})();
+    function showPage(name){
+      document.querySelectorAll('[id^="page-"]').forEach(el=>el.classList.add('hidden'));
+      const target=document.getElementById('page-'+name); if(target) target.classList.remove('hidden');
+      document.querySelectorAll('.nav-link').forEach(a=>{
+        a.classList.remove('nav-active','bg-white/[0.08]','text-white');
+        // restore inactive styling
+        if(['docs','support'].includes(a.dataset.page)){
+          a.classList.add('text-white/40');
+          a.classList.remove('text-white/60');
+        } else {
+          a.classList.add('text-white/60');
+          a.classList.remove('text-white/40');
+        }
+      });
+      document.querySelectorAll(`.nav-link[data-page="${name}"]`).forEach(a=>{
+        a.classList.add('nav-active','bg-white/[0.08]','text-white');
+        a.classList.remove('text-white/60','text-white/40');
+      });
+      document.getElementById('breadcrumb-sub').textContent=name.charAt(0).toUpperCase()+name.slice(1);
+      if(name==='keys') filterKeysPage();
+      if(name==='services') renderServicesGrid();
+      if(name==='scans') renderScans();
+      lucide.createIcons();
+    }
+    document.querySelectorAll('.nav-link').forEach(a=>a.addEventListener('click',e=>{e.preventDefault();const p=a.dataset.page; if(p) showPage(p); if(window.innerWidth<1024) toggleSidebar();}));
+    async function fetchJSON(url){try{const r=await fetch(url);return await r.json();}catch{return null;}}
+    async function updateStats(){
+      const s=await fetchJSON('/api/stats'); if(!s) return;
+      document.getElementById('stat-total').textContent=s.total;
+      document.getElementById('stat-valid').textContent=s.valid;
+      document.getElementById('stat-invalid').textContent=s.invalid;
+      document.getElementById('stat-services').textContent=s.services?s.services.length:0;
+      document.getElementById('stat-services-inline').textContent=s.services?s.services.length:0;
+      const pctValid=s.total?Math.round(s.valid/s.total*100):0, pctInvalid=s.total?Math.round(s.invalid/s.total*100):0;
+      document.getElementById('stat-valid-pct').innerHTML=`<i data-lucide="activity" class="w-3 h-3 inline"></i> ${pctValid}% of total`;
+      document.getElementById('valid-trend').textContent=pctValid+'%';
+      const invalidTrendEl=document.getElementById('invalid-trend'); if(invalidTrendEl) invalidTrendEl.textContent=pctInvalid+'%';
+      document.getElementById('stat-invalid-pct').innerHTML=`<i data-lucide="activity" class="w-3 h-3 inline"></i> ${pctInvalid}% of total`;
+      document.getElementById('stat-services-list').textContent=s.services&&s.services.length?s.services.slice(0,3).map(x=>x.service).join(', '):'—';
+      document.getElementById('keys-count').textContent=s.total+' keys';
+      document.getElementById('keys-found').textContent=s.total;
+      document.getElementById('pages-total').textContent=document.getElementById('scan-pages').value||10;
+      lucide.createIcons();
+    }
+    async function updateKeys(){
+      const data=await fetchJSON('/api/keys'); if(!data) return;
+      allKeys=data; allServices=[...new Set(data.map(k=>k.service))].sort();
+      if(isSelecting()) return; // don't rebuild selects while user is selecting text
+      const sel=document.getElementById('service-filter');
+      const prevSel=sel.value;
+      sel.innerHTML='<option value="all">All Services</option>'+allServices.map(s=>`<option value="${s}">${s}</option>`).join('');
+      if(allServices.includes(prevSel)) sel.value=prevSel;
+      const sel2=document.getElementById('keys-page-service');
+      if(sel2){
+        const prevSel2=sel2.value;
+        sel2.innerHTML='<option value="all">All Services</option>'+allServices.map(s=>`<option value="${s}">${s}</option>`).join('');
+        if(allServices.includes(prevSel2)) sel2.value=prevSel2;
+        else if(prevSel2 && prevSel2!=='all') sel2.value=prevSel;
+      }
+      filterKeys(); filterKeysPage();
+    }
+    // Dashboard table: NO report button (only in API Keys page per spec)
+    function dashboardRow(k){
+      const masked=k.key.length>16?k.key.slice(0,12)+'••••••••'+k.key.slice(-4):k.key.slice(0,6)+'••••';
+      const badge=k.valid?'<span class="badge bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800">Valid</span>':'<span class="badge bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800">Invalid</span>';
+      const svcMap={Stripe:'credit-card',GitHub:'github',OpenAI:'bot',Firebase:'flame',Supabase:'database',Pinecone:'hexagon',Cloudflare:'cloud',Twilio:'phone',Sentry:'bug',Datadog:'bar-chart-2',Linear:'trello',Notion:'file-text',SlackBot:'message-square'};
+      const svcIcon=svcMap[k.service]||'key-round';
+      const repoName=(k.repo||'').split('/')[1]||k.repo||'-';
+      const repoLink=k.repo_url?`<a href="${k.repo_url}" target="_blank" class="inline-flex items-center gap-1.5 hover:underline"><i data-lucide="github" class="w-3.5 h-3.5 text-stone-500"></i>${repoName}</a>`:`<span class="inline-flex items-center gap-1.5"><i data-lucide="github" class="w-3.5 h-3.5 text-stone-400"></i>${repoName}</span>`;
+      const d=parseDate(k.last_seen); const time=d?d.toLocaleString():'-';
+      const sevColor=k.severity==='critical'?'text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/20 border-red-200':k.severity==='high'?'text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border-amber-200':'text-stone-600 dark:text-stone-400 bg-stone-50 dark:bg-stone-800 border-hairline';
+      const sev=k.severity?`<span class="badge ${sevColor} ml-1">${k.severity}</span>`:'';
+      return `<tr class="hover:bg-stone-50 dark:hover:bg-stone-800/50 transition-colors">
+        <td class="px-4 py-2.5"><div class="flex items-center gap-2"><code class="font-mono text-xs bg-stone-100 dark:bg-stone-800 px-2 py-1 rounded">${masked}</code><button onclick="navigator.clipboard.writeText('${k.key}');this.innerHTML='✓'" class="w-6 h-6 rounded flex items-center justify-center hover:bg-stone-100 dark:hover:bg-stone-700 transition-colors" title="Copy"><i data-lucide="copy" class="w-3 h-3"></i></button></div></td>
+        <td class="px-3 py-2.5 hidden sm:table-cell"><span class="inline-flex items-center gap-1.5 text-xs font-medium bg-white dark:bg-stone-800 border border-hairline rounded-full px-2.5 py-1"><i data-lucide="${svcIcon}" class="w-3 h-3"></i>${k.service}${sev}</span></td>
+        <td class="px-3 py-2.5">${badge}</td>
+        <td class="px-3 py-2.5 hidden md:table-cell text-xs">${repoLink}</td>
+        <td class="px-3 py-2.5 hidden lg:table-cell text-xs text-muted font-mono">${time}</td>
+        <td class="px-3 py-2.5"><div class="relative"><button onclick="this.nextElementSibling.classList.toggle('hidden')" class="w-7 h-7 rounded-full hover:bg-stone-100 dark:hover:bg-stone-700 flex items-center justify-center focus-visible:outline-none focus-visible:ring-2"><i data-lucide="more-horizontal" class="w-4 h-4"></i></button><div class="hidden absolute right-0 mt-1 w-48 bg-white dark:bg-stone-800 border border-hairline rounded-xl shadow-lg py-1 z-10">
+          <button onclick="navigator.clipboard.writeText('${k.key}')" class="w-full text-left px-3 py-1.5 text-xs hover:bg-stone-50 dark:hover:bg-stone-700 flex items-center gap-2"><i data-lucide="copy" class="w-3.5 h-3.5"></i> Copy</button>
+          <a href="${k.repo_url||'#'}" target="_blank" class="block px-3 py-1.5 text-xs hover:bg-stone-50 dark:hover:bg-stone-700 flex items-center gap-2"><i data-lucide="external-link" class="w-3.5 h-3.5"></i> Open repo</a>
+        </div></div></td>
+      </tr>`;
+    }
+    // API Keys page row: includes visible Report button per spec
+    function keysPageRow(k){
+      const masked=k.key.length>16?k.key.slice(0,12)+'••••••••'+k.key.slice(-4):k.key.slice(0,6)+'••••';
+      const badge=k.valid?'<span class="badge bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 border-emerald-200">Valid</span>':'<span class="badge bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border-red-200">Invalid</span>';
+      const svcMap={Stripe:'credit-card',GitHub:'github',OpenAI:'bot',Firebase:'flame',Supabase:'database',Pinecone:'hexagon',Cloudflare:'cloud',Twilio:'phone',Sentry:'bug',Datadog:'bar-chart-2',Linear:'trello',Notion:'file-text',SlackBot:'message-square'};
+      const svcIcon=svcMap[k.service]||'key-round';
+      const repoName=(k.repo||'').split('/')[1]||k.repo||'-';
+      const repoLink=k.repo_url?`<a href="${k.repo_url}" target="_blank" class="inline-flex items-center gap-1.5 hover:underline"><i data-lucide="github" class="w-3.5 h-3.5"></i>${repoName}</a>`:`<span>${repoName}</span>`;
+      const d=parseDate(k.last_seen); const time=d?d.toLocaleString():'-';
+      return `<tr class="hover:bg-stone-50 dark:hover:bg-stone-800/50">
+        <td class="px-4 py-2.5"><code class="font-mono text-xs bg-stone-100 dark:bg-stone-800 px-2 py-1 rounded">${masked}</code></td>
+        <td class="px-3 py-2.5 hidden sm:table-cell"><span class="inline-flex items-center gap-1.5 text-xs bg-white dark:bg-stone-800 border border-hairline rounded-full px-2 py-1"><i data-lucide="${svcIcon}" class="w-3 h-3"></i>${k.service}</span></td>
+        <td class="px-3 py-2.5">${badge}</td>
+        <td class="px-3 py-2.5 hidden md:table-cell text-xs">${repoLink}</td>
+        <td class="px-3 py-2.5 hidden lg:table-cell text-xs font-mono text-muted">${time}</td>
+        <td class="px-3 py-2.5"><button onclick="handleReport(this)" data-owner="${k.owner||''}" data-repo="${(k.repo||'').split('/')[1]||''}" data-key="${k.key}" data-service="${k.service}" data-fileurl="${k.file_url||''}" data-path="${k.path||''}" class="inline-flex items-center gap-1.5 text-xs font-medium text-white bg-amber-600 hover:bg-amber-700 rounded-full px-3 py-1 transition-colors"><i data-lucide="flag" class="w-3 h-3"></i> Report</button></td>
+        <td class="px-3 py-2.5"><button onclick="navigator.clipboard.writeText('${k.key}')" class="w-7 h-7 rounded-full hover:bg-stone-100 dark:hover:bg-stone-700 flex items-center justify-center"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button></td>
+      </tr>`;
+    }
+    function filterKeys(){
+      const search=document.getElementById('key-search').value.toLowerCase();
+      const service=document.getElementById('service-filter').value;
+      const validFilter=document.getElementById('valid-filter').value;
+      const filtered=allKeys.filter(k=>{if(service!=='all'&&k.service!==service) return false; if(validFilter==='valid'&&!k.valid) return false; if(validFilter==='invalid'&&k.valid) return false; if(search&&!k.key.toLowerCase().includes(search)&&!k.repo?.toLowerCase().includes(search)) return false; return true;});
+      const tbody=document.getElementById('keys-body');
+      if(filtered.length===0){tbody.innerHTML='<tr><td colspan="6" class="text-center py-8 text-muted text-sm">No matching keys</td></tr>';return;}
+      tbody.innerHTML=filtered.slice(0,50).map(dashboardRow).join(''); lucide.createIcons();
+    }
+    function filterKeysPage(){
+      const search=(document.getElementById('keys-page-search')?.value||'').toLowerCase();
+      const service=document.getElementById('keys-page-service')?.value||'all';
+      const validFilter=document.getElementById('keys-page-status')?.value||'all';
+      const filtered=allKeys.filter(k=>{if(service!=='all'&&k.service!==service) return false; if(validFilter==='valid'&&!k.valid) return false; if(validFilter==='invalid'&&k.valid) return false; if(search&&!k.key.toLowerCase().includes(search)&&!k.repo?.toLowerCase().includes(search)) return false; return true;});
+      const tbody=document.getElementById('keys-page-body'); if(!tbody) return;
+      if(filtered.length===0){tbody.innerHTML='<tr><td colspan="7" class="text-center py-8 text-muted text-sm">No matching keys</td></tr>';return;}
+      tbody.innerHTML=filtered.slice(0,100).map(keysPageRow).join(''); lucide.createIcons();
+    }
+    async function updateActivity(){
+      const data=await fetchJSON('/api/activity'); if(!data||!data.length) return;
+      document.getElementById('activity-count').textContent=data.length;
+      const list=document.getElementById('activity-list');
+      list.innerHTML=data.slice(0,12).map(a=>{
+        const d=parseDate(a.created_at); const time=d?d.toLocaleTimeString():'';
+        const isSuccess=a.level==='success'||a.message.includes('Valid'), isWarn=a.level==='warning', isErr=a.level==='error';
+        const dot=isSuccess?'bg-emerald-500':isErr?'bg-red-500':isWarn?'bg-amber-500':'bg-stone-300';
+        const icon=isSuccess?'check':isErr?'x':isWarn?'alert-triangle':'circle';
+        return `<li class="flex gap-3 group">
+          <div class="w-5 flex justify-center shrink-0 pt-1"><span class="w-3 h-3 rounded-full ${dot} ring-4 ring-white dark:ring-stone-900 border border-white dark:border-stone-800 shadow-sm shrink-0 flex items-center justify-center"><i data-lucide="${icon}" class="w-1.5 h-1.5 text-white hidden"></i></span></div>
+          <div class="flex-1 min-w-0 pb-3 border-b border-hairline/60 last:border-0 group-last:border-0">
+            <div class="text-xs font-medium leading-tight truncate group-hover:text-stone-900 dark:group-hover:text-white transition-colors">${a.message}</div>
+            <div class="text-[11px] text-muted font-mono mt-0.5 flex items-center gap-1"><i data-lucide="clock" class="w-3 h-3 opacity-60"></i>${time}</div>
+          </div>
+        </li>`;
+      }).join(''); lucide.createIcons();
+    }
+    async function updateServices(){
+      const s=await fetchJSON('/api/stats'); if(!s||!s.services) return;
+      const list=document.getElementById('services-list');
+      const total=s.services.reduce((a,b)=>a+b.cnt,0);
+      list.innerHTML=s.services.map(svc=>{
+        const pct=total?(svc.cnt/total*100).toFixed(1):0;
+        const iconMap={Stripe:'credit-card',OpenAI:'bot',GitHub:'github',Firebase:'flame',Supabase:'database',Pinecone:'hexagon',Cloudflare:'cloud',Twilio:'phone',Sentry:'bug',Datadog:'bar-chart-2',Linear:'trello',Notion:'file-text',SlackBot:'message-square',HuggingFace:'brain',Anthropic:'sparkles',GoogleGemini:'sparkle'};
+        const ic=iconMap[svc.service]||'key-round';
+        return `<li class="flex items-center justify-between px-4 py-2.5 text-sm"><span class="flex items-center gap-2"><i data-lucide="${ic}" class="w-4 h-4 text-stone-500"></i>${svc.service}</span><span class="text-xs font-mono bg-stone-100 dark:bg-stone-800 rounded-full px-2 py-1 border border-hairline">${svc.cnt} (${pct}%)</span></li>`;
+      }).join(''); lucide.createIcons();
+    }
+    function renderServicesGrid(){
+      const s=allKeys.reduce((acc,k)=>{acc[k.service]=(acc[k.service]||0)+1;return acc;},{});
+      const grid=document.getElementById('services-grid');
+      const services=Object.entries(s).sort((a,b)=>b[1]-a[1]);
+      if(!services.length){grid.innerHTML='<div class="col-span-3 card p-8 text-center text-muted text-sm">No services yet — run a scan</div>';return;}
+      const iconMap={Stripe:'credit-card',OpenAI:'bot',GitHub:'github',Firebase:'flame',Supabase:'database',Pinecone:'hexagon',Cloudflare:'cloud',Twilio:'phone',Sentry:'bug',Datadog:'bar-chart-2',Linear:'trello',Notion:'file-text',SlackBot:'message-square',HuggingFace:'brain',Anthropic:'sparkles',GoogleGemini:'sparkle',AWSKey:'cloud',TelegramBot:'send',DiscordBot:'message-circle',SendGrid:'mail',GitLab:'git-branch',Mailgun:'mail',Mapbox:'map'};
+      grid.innerHTML=services.map(([svc,cnt])=>{
+        const ic=iconMap[svc]||'key-round';
+        const validCnt=allKeys.filter(k=>k.service===svc&&k.valid).length;
+        const pct=allKeys.length?Math.round(cnt/allKeys.length*100):0;
+        return `<div class="card p-4 cursor-pointer hover:shadow-md transition-shadow" onclick="document.getElementById('keys-page-service').value='${svc}'; showPage('keys'); filterKeysPage();"><div class="w-10 h-10 rounded-xl bg-stone-100 dark:bg-stone-800 flex items-center justify-center"><i data-lucide="${ic}" class="w-5 h-5"></i></div><div class="font-semibold mt-3 text-sm">${svc}</div><div class="text-xs text-muted">${cnt} keys • ${validCnt} valid • ${pct}%</div><div class="w-full h-1.5 bg-stone-100 dark:bg-stone-800 rounded-full mt-3 overflow-hidden"><div class="h-full bg-stone-900 dark:bg-white" style="width:${pct}%"></div></div><div class="text-xs text-blue-600 dark:text-blue-400 mt-2">View →</div></div>`;
+      }).join(''); lucide.createIcons();
+    }
+    async function renderScans(){
+      const data=await fetchJSON('/api/activity'); const scans=(data||[]).filter(a=>a.message.includes('Scan'));
+      const list=document.getElementById('scans-list');
+      if(!scans.length){list.innerHTML='<div class="p-8 text-center text-muted text-sm">No scans yet</div>';return;}
+      list.innerHTML=scans.slice(0,10).map(a=>{
+        const d=parseDate(a.created_at); return `<div class="flex items-center justify-between px-4 py-3"><div class="min-w-0"><div class="text-sm font-medium truncate">${a.message}</div><div class="text-xs text-muted font-mono">${d?d.toLocaleString():'-'}</div></div><span class="badge shrink-0 ml-2 ${a.level==='error'?'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border-red-200':a.level==='warning'?'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 border-amber-200':'bg-stone-100 dark:bg-stone-800 border-hairline'}">${a.level}</span></div>`;
+      }).join('');
+    }
+    async function updateRateLimit(){
+      const r=await fetchJSON('/api/github/rate_limit'); if(!r) return;
+      const rem=r.search?.remaining??0, lim=r.search?.limit??5000;
+      const pct=lim?Math.round(rem/lim*100):0;
+      document.getElementById('rate-limit-text').textContent=rem.toLocaleString()+' / '+lim.toLocaleString();
+      document.getElementById('rate-bar').style.width=pct+'%';
+      document.getElementById('rate-bar').className='h-full transition-all duration-500 '+(pct<20?'bg-red-500':pct<50?'bg-amber-500':'bg-emerald-500');
+      const coreRem=r.core?.remaining??0, coreLim=r.core?.limit??5000;
+      document.getElementById('rate-core').textContent=coreRem+'/'+coreLim;
+      document.getElementById('rate-search').textContent=rem+'/'+lim;
+    }
+    async function updateScanStatus(){
+      try{
+        const s=await fetchJSON('/api/scan/status'); if(!s) return;
+        const title=document.getElementById('scan-status-title'), desc=document.getElementById('scan-status-desc');
+        const pagesScanned=document.getElementById('pages-scanned'), pagesBar=document.getElementById('pages-bar'), prog=document.getElementById('progress-circle'), icon=document.getElementById('status-icon');
+        const btn=document.getElementById('scan-btn'), stopBtn=document.getElementById('stop-btn'), clearBtn=document.getElementById('clear-invalid-btn');
+        const recheckBtn=document.querySelector('button[onclick="revalidateAll()"]');
+        const totalPages=parseInt(document.getElementById('scan-pages').value)||10;
+        const pct=totalPages?Math.min(100, Math.round(s.page/totalPages*100)):0;
+        if(s.running){
+          title.textContent='Scanning...'; desc.textContent=s.progress||'Scanning repositories';
+          pagesScanned.textContent=s.page||0; pagesBar.style.width=pct+'%'; prog.style.strokeDashoffset=100.5 - (100.5*pct/100);
+          icon.setAttribute('data-lucide','loader-2'); icon.classList.add('animate-spin');
+          document.getElementById('scan-status').textContent='Scanning...'; document.getElementById('scan-status-dot').className='w-2 h-2 rounded-full bg-amber-500 live-dot';
+          btn.disabled=true; btn.innerHTML='<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Scanning'; stopBtn.disabled=false;
+          // clear/re-check allowed during scan now (blocked_keys prevents re-add)
+          if(clearBtn){clearBtn.disabled=false; clearBtn.classList.remove('opacity-40','cursor-not-allowed');}
+          if(recheckBtn){recheckBtn.disabled=false;}
+        } else {
+          const isIdle=s.progress==='Idle' || !s.progress;
+          title.textContent=isIdle?'Ready to scan':'Scan '+s.progress; desc.textContent=isIdle?'Configure and click Start Scan to begin.':s.progress;
+          pagesScanned.textContent=s.page||0; prog.style.strokeDashoffset=isIdle?'100.5':0;
+          icon.setAttribute('data-lucide', isIdle?'shield':'check'); icon.classList.remove('animate-spin');
+          document.getElementById('scan-status').textContent='Idle'; document.getElementById('scan-status-dot').className='w-2 h-2 rounded-full bg-white/30';
+          btn.disabled=false; btn.innerHTML='<i data-lucide="play" class="w-4 h-4"></i> Start Scan'; stopBtn.disabled=true;
+          if(clearBtn){clearBtn.disabled=false; clearBtn.classList.remove('opacity-40','cursor-not-allowed');}
+          if(recheckBtn){recheckBtn.disabled=false;}
+        }
+        document.getElementById('scan-progress-text').textContent=s.progress||'';
+        document.getElementById('current-page').textContent=s.page? (s.query? s.query.slice(0,28)+'… page '+s.page : 'page '+s.page) : '—';
+        document.getElementById('tokens-remaining').textContent=s.tokens_remaining||'';
+        lucide.createIcons();
+      }catch(e){console.error(e)}
+    }
+    async function startScan(){
+      const tokens=document.getElementById('scan-tokens').value.trim();
+      if(!tokens){alert('Enter your GitHub token(s)');return;}
+      const tokenList=tokens.split(',').map(t=>t.trim()).filter(Boolean);
+      const startPage=parseInt(document.getElementById('start-page').value)||1;
+      const pages=parseInt(document.getElementById('scan-pages').value)||0;
+      const btn=document.getElementById('scan-btn'); btn.disabled=true; btn.innerHTML='<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Starting...'; lucide.createIcons();
+      try{
+        const r=await fetch('/api/scan/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tokens:tokenList,start_page:startPage,pages})});
+        if(!r.ok){const err=await r.json(); alert(err.error||'Failed'); btn.disabled=false; btn.innerHTML='<i data-lucide="play" class="w-4 h-4"></i> Start Scan'; lucide.createIcons();}
+      }catch(e){alert('Network error'); btn.disabled=false; btn.innerHTML='<i data-lucide="play" class="w-4 h-4"></i> Start Scan'; lucide.createIcons();}
+    }
+    async function stopScan(){
+      const btn=document.getElementById('stop-btn'); const scanBtn=document.getElementById('scan-btn');
+      btn.disabled=true; btn.innerHTML='<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Stopping...'; lucide.createIcons();
+      try{
+        const r=await fetch('/api/scan/stop',{method:'POST'});
+        if(r.ok){
+          // immediate feedback - backend already set Idle
+          document.getElementById('scan-status').textContent='Idle';
+          document.getElementById('scan-status-dot').className='w-2 h-2 rounded-full bg-white/30';
+          document.getElementById('scan-status-title').textContent='Ready to scan';
+          document.getElementById('scan-status-desc').textContent='Scan stopped';
+          document.getElementById('progress-circle').style.strokeDashoffset='100.5';
+          scanBtn.disabled=false; scanBtn.innerHTML='<i data-lucide="play" class="w-4 h-4"></i> Start Scan';
+          await refresh();
+          lucide.createIcons();
+        } else {
+          const err=await r.json(); alert(err.error||'No scan running');
+        }
+      }catch(e){ alert('Stop failed: '+e.message); }
+      btn.disabled=true; btn.innerHTML='<i data-lucide="square" class="w-3.5 h-3.5 fill-current"></i> Stop Scan'; lucide.createIcons();
+    }
+    async function revalidateAll(){
+      if(!confirm('Re-check all keys against their APIs? This will re-validate ALL keys (valid + invalid, all services).')) return;
+      const btn=event.target; btn.disabled=true; const old=btn.innerHTML; btn.innerHTML='...';
+      try{const r=await fetch('/api/keys/revalidate',{method:'POST'}); const data=await r.json(); if(!r.ok){alert(data.error||'Failed');return;} alert(`Re-checked ${data.rechecked} keys`); await refresh();}catch(e){alert('Failed: '+e.message);} finally{btn.disabled=false; btn.innerHTML=old;}
+    }
+    async function clearInvalidKeys(event){
+      const invalidCount=document.getElementById('stat-invalid').textContent.trim();
+      if(invalidCount==='0'){alert('No invalid keys to clear');return;}
+      if(!confirm(`Clear ${invalidCount} invalid keys? Valid keys will be kept. This cannot be undone.`)) return;
+      const btn=(event&&event.target)?event.target.closest('button'):document.getElementById('clear-invalid-btn');
+      const targetBtn=btn||document.getElementById('clear-invalid-btn');
+      targetBtn.disabled=true; const prev=targetBtn.innerHTML; targetBtn.innerHTML='...';
+      try{const r=await fetch('/api/keys/clear-invalid',{method:'POST'}); const data=await r.json(); if(!r.ok){alert(data.error||'Failed');return;} alert(`Cleared ${data.cleared} invalid keys`); await refresh();}catch(e){alert('Failed: '+e.message);} finally{targetBtn.disabled=false; targetBtn.innerHTML=prev; lucide.createIcons();}
+    }
+    function handleReport(el){
+      const btn=document.createElement('button'); btn.dataset.owner=el.dataset.owner; btn.dataset.repo=el.dataset.repo; btn.dataset.key=el.dataset.key; btn.dataset.service=el.dataset.service; btn.dataset.fileurl=el.dataset.fileurl; btn.dataset.path=el.dataset.path;
+      reportKey(btn);
+    }
+    async function reportKey(btn){
+      const owner=btn.dataset.owner, repo=btn.dataset.repo, key=btn.dataset.key, service=btn.dataset.service, fileUrl=btn.dataset.fileurl, path=btn.dataset.path;
+      if(!owner||!repo){alert('Missing repo info');return;}
+      const token=prompt('Enter GitHub token (public_repo scope):'); if(!token) return;
+      btn.disabled=true; const orig=btn.innerHTML; btn.innerHTML='...';
+      try{const r=await fetch('/api/keys/report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({owner,repo,key,service,file_url:fileUrl,path,token})}); const text=await r.text(); let data; try{data=JSON.parse(text);}catch{data={error:text};} if(data.url){alert('Issue created: '+data.url); window.open(data.url,'_blank');} else{alert('Error: '+(data.error||text.slice(0,200)));}}catch(e){alert('Request failed: '+e.message);}
+      btn.disabled=false; btn.innerHTML=orig; lucide.createIcons();
+    }
+    async function refresh(){
+      if(isSelecting()){
+        // don't rebuild tables while user is selecting text — only update stats/status
+        await Promise.all([updateStats(),updateScanStatus(),updateRateLimit()]);
+        return;
+      }
+      await Promise.all([updateStats(),updateKeys(),updateActivity(),updateServices(),updateScanStatus(),updateRateLimit()]);
+    }
+    setInterval(refresh,3000); refresh(); lucide.createIcons();
+    // clear stuck selection on Escape
+    document.addEventListener('keydown',e=>{if(e.key==='Escape'&&isSelecting()) window.getSelection().removeAllRanges();});
+    document.addEventListener('mouseup',()=>{ // ensure selection is not trapped by overlay
+      const overlay=document.getElementById('sidebar-overlay');
+      if(overlay&&!overlay.classList.contains('hidden')&&isSelecting()) overlay.classList.add('hidden');
+    });
+  </script>
+</body>
+</html>

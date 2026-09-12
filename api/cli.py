@@ -105,7 +105,7 @@ def main():
             t = threading.Thread(target=run_scanner, args=(scan_args, db), daemon=True)
             t.start()
 
-        from dashboard.app import start_dashboard
+        from api.dashboard.app import start_dashboard
 
         start_dashboard(db, host=args.host, port=args.port)
 
