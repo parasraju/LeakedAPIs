@@ -369,14 +369,6 @@ def check_cloudflare_key(api_key: str) -> bool:
     return valid
 
 
-def check_datadog_key(api_key: str) -> bool:
-    try:
-        r = requests.get("https://api.datadoghq.com/api/v1/validate", headers={"DD-API-KEY": api_key}, timeout=10)
-    except requests.RequestException:
-        return False
-    return r.status_code == 200
-
-
 def check_sentry_key(api_key: str) -> bool:
     try:
         r = requests.get("https://sentry.io/api/0/organizations/", headers={"Authorization": f"Bearer {api_key}"}, timeout=10)
@@ -402,6 +394,79 @@ def check_openrouter_key(api_key: str) -> bool:
     return r.status_code == 200
 
 
+def check_xai_key(api_key: str) -> bool:
+    try:
+        r = requests.get("https://api.x.ai/v1/models", headers={"Authorization": f"Bearer {api_key}"}, timeout=10)
+    except requests.RequestException as e:
+        logger.warning("Network error checking xAI: %s", e)
+        return False
+    return r.status_code == 200
+
+
+def check_deepseek_key(api_key: str) -> bool:
+    try:
+        r = requests.get("https://api.deepseek.com/v1/models", headers={"Authorization": f"Bearer {api_key}"}, timeout=10)
+    except requests.RequestException as e:
+        logger.warning("Network error checking DeepSeek: %s", e)
+        return False
+    return r.status_code == 200
+
+
+def check_groq_key(api_key: str) -> bool:
+    try:
+        r = requests.get("https://api.groq.com/openai/v1/models", headers={"Authorization": f"Bearer {api_key}"}, timeout=10)
+    except requests.RequestException as e:
+        logger.warning("Network error checking Groq: %s", e)
+        return False
+    return r.status_code == 200
+
+
+def check_together_key(api_key: str) -> bool:
+    try:
+        r = requests.get("https://api.together.xyz/v1/models", headers={"Authorization": f"Bearer {api_key}"}, timeout=10)
+    except requests.RequestException as e:
+        logger.warning("Network error checking Together: %s", e)
+        return False
+    return r.status_code == 200
+
+
+def check_cohere_key(api_key: str) -> bool:
+    try:
+        r = requests.get("https://api.cohere.com/v1/models", headers={"Authorization": f"Bearer {api_key}"}, timeout=10)
+    except requests.RequestException as e:
+        logger.warning("Network error checking Cohere: %s", e)
+        return False
+    return r.status_code == 200
+
+
+def check_cerebras_key(api_key: str) -> bool:
+    try:
+        r = requests.get("https://api.cerebras.ai/v1/models", headers={"Authorization": f"Bearer {api_key}"}, timeout=10)
+    except requests.RequestException as e:
+        logger.warning("Network error checking Cerebras: %s", e)
+        return False
+    return r.status_code == 200
+
+
+def check_replicate_key(api_key: str) -> bool:
+    try:
+        r = requests.get("https://api.replicate.com/v1/account", headers={"Authorization": f"Bearer {api_key}"}, timeout=10)
+    except requests.RequestException as e:
+        logger.warning("Network error checking Replicate: %s", e)
+        return False
+    return r.status_code == 200
+
+
+def check_perplexity_key(api_key: str) -> bool:
+    try:
+        r = requests.get("https://api.perplexity.ai/chat/completions", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json={"model": "sonar", "max_tokens": 1, "messages": [{"role": "user", "content": "ping"}]}, timeout=10)
+    except requests.RequestException as e:
+        logger.warning("Network error checking Perplexity: %s", e)
+        return False
+    # 401/403 = invalid, anything else (400 model/auth quirk, 429) = key accepted
+    return r.status_code in (200, 400, 429)
+
+
 VALIDATORS = {
     "OpenAI": cached_validator(check_openai_key),
     "HuggingFace": cached_validator(check_huggingface_key),
@@ -423,8 +488,14 @@ VALIDATORS = {
     "Supabase": cached_validator(check_supabase_key),
     "Firebase": cached_validator(check_firebase_key),
     "Cloudflare": cached_validator(check_cloudflare_key),
-    "Datadog": cached_validator(check_datadog_key),
     "Sentry": cached_validator(check_sentry_key),
     "Twilio": cached_validator(check_twilio_key),
     "OpenRouter": cached_validator(check_openrouter_key),
+    "xAI": cached_validator(check_xai_key),
+    "DeepSeek": cached_validator(check_deepseek_key),
+    "Groq": cached_validator(check_groq_key),
+    "TogetherAI": cached_validator(check_together_key),
+    "Cerebras": cached_validator(check_cerebras_key),
+    "Replicate": cached_validator(check_replicate_key),
+    "Perplexity": cached_validator(check_perplexity_key),
 }

@@ -23,10 +23,16 @@ SERVICES = [
     "Supabase",
     "Firebase",
     "Cloudflare",
-    "Datadog",
     "Sentry",
     "Twilio",
     "OpenRouter",
+    "xAI",
+    "DeepSeek",
+    "Groq",
+    "TogetherAI",
+    "Cerebras",
+    "Replicate",
+    "Perplexity",
 ]
 
 PATTERNS = {
@@ -50,10 +56,16 @@ PATTERNS = {
     "Supabase": re.compile(r"sbp_[A-Za-z0-9]{40,}|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}"),
     "Firebase": re.compile(r"AIza[0-9A-Za-z_-]{35}"),
     "Cloudflare": re.compile(r"\b[0-9a-fA-F]{40}\b"),
-    "Datadog": re.compile(r"dd[a-z0-9]{32,}"),
     "Sentry": re.compile(r"sntrys_[A-Za-z0-9_-]{30,}"),
     "Twilio": re.compile(r"SK[A-Za-z0-9]{32}"),
     "OpenRouter": re.compile(r"sk-or-v1-[A-Za-z0-9]{48,}"),
+    "xAI": re.compile(r"xai-[A-Za-z0-9]{20,}"),
+    "DeepSeek": re.compile(r"sk-[A-Za-z0-9]{32,}"),
+    "Groq": re.compile(r"gsk_[A-Za-z0-9]{20,}"),
+    "TogetherAI": re.compile(r"tgp_v1_[A-Za-z0-9]{50,}"),
+    "Cerebras": re.compile(r"csk-[A-Za-z0-9]{20,}"),
+    "Replicate": re.compile(r"r8_[A-Za-z0-9]{20,}"),
+    "Perplexity": re.compile(r"pplx-[A-Za-z0-9]{30,}"),
 }
 
 ENV_VAR_QUERIES = [
@@ -85,6 +97,23 @@ ENV_VAR_QUERIES = [
     '"AWS_ACCESS_KEY_ID" extension:env',
     '"GOOGLE_API_KEY" extension:env',
     '"GEMINI_API_KEY" extension:env',
+    '"XAI_API_KEY" extension:env',
+    '"DEEPSEEK_API_KEY" extension:env',
+    '"GROQ_API_KEY" extension:env',
+    '"TOGETHER_API_KEY" extension:env',
+    '"COHERE_API_KEY" extension:env',
+    '"CEREBRAS_API_KEY" extension:env',
+    '"REPLICATE_API_TOKEN" extension:env',
+    '"PERPLEXITY_API_KEY" extension:env',
+    '"MISTRAL_API_KEY" extension:env',
+    '"OPENROUTER_API_KEY" extension:env',
+    '"FIREWORKS_API_KEY" extension:env',
+    '"SAMBANOVA_API_KEY" extension:env',
+    '"DEEPINFRA_API_KEY" extension:env',
+    '"AI21_API_KEY" extension:env',
+    '"AZURE_OPENAI_API_KEY" extension:env',
+    '"AZURE_OPENAI_ENDPOINT" extension:env',
+    '"HF_TOKEN" extension:json',
 ]
 
 PREFIX_QUERIES = [

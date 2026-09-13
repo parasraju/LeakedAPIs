@@ -4,3 +4,6 @@ found_keys.db
 found_keys.db-shm
 found_keys.db-wal
 found_keys.json
+.env
+.env.*
+!.env.example

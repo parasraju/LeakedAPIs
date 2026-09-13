@@ -66,6 +66,24 @@ python main.py dashboard -t "github_pat_xxxx" --port 5000
 
 Open **http://127.0.0.1:5000** in your browser.
 
+### Provider & model tools
+
+API Instructor ships a unified provider registry, key manager, validator and
+model catalog — see **docs/PROVIDERS.md** for the full reference.
+
+```powershell
+python main.py providers                        # list supported providers
+python main.py keys                             # configured keys (always masked)
+python main.py validate openai                  # validate a key (env var)
+python main.py validate                         # health of every provider
+python main.py models                           # verified model catalog
+python main.py models --alias deepseek:reasoner # resolve a convenience alias
+python main.py models --discover groq           # live model discovery
+```
+
+Dashboard routes: `/api/providers`, `/api/models`, `/api/keys/status`,
+`/api/health`, `/api/validate/{provider}`, `/api/models/discover`.
+
 ### Migrate old JSON data
 
 ```powershell
@@ -74,7 +92,9 @@ python migrate.py
 
 ## Services scanned
 
-OpenAI, HuggingFace, Anthropic, Stripe, GitHub, Google Gemini, Telegram Bot, Discord Bot, SendGrid, GitLab, Notion, Linear, Mailgun, Mapbox, Slack, AWS.
+OpenAI, HuggingFace, Anthropic, Stripe, GitHub, Google Gemini, Telegram Bot,
+Discord Bot, SendGrid, GitLab, Notion, Linear, Mailgun, Mapbox, Slack, AWS,
+xAI, DeepSeek, Mistral, Groq, Together AI, Cerebras, Replicate, Perplexity.
 
 ## Project structure
 
@@ -88,9 +108,16 @@ apiInstructor/
 │   ├── db.py                SQLite database
 │   ├── patterns.py          Regex patterns + search queries
 │   ├── scanner.py           GitHub scanner
-│   └── validators.py        API key validators
-└── dashboard/
-    ├── app.py               Flask web app
-    ├── templates/            HTML templates
-    └── static/               CSS
+│   ├── validators.py        API key validators
+│   ├── dashboard/           Flask web app (app.py, templates/, static/)
+│   └── providers/           Provider registry, key manager,
+│                            validation, adapters, model catalog
+│       ├── catalog.py       Provider declarations (add providers here)
+│       ├── registry.py      Provider registry + health
+│       ├── keys.py          Env config + key masking
+│       ├── validation.py    validate(), health_of()
+│       ├── adapters.py      OpenAI-compatible / Anthropic adapters
+│       ├── models.py        Model catalog, aliases, discovery
+│       └── errors.py        Error normalization
+└── tests/                   Pytest suite (incl. test_provider_*)
 ```

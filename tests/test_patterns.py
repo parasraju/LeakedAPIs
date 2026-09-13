@@ -9,10 +9,16 @@ from api.patterns import (
     SERVICES,
     is_placeholder,
 )
+from api.validators import VALIDATORS
 
 
 def test_every_service_has_a_pattern():
     assert set(SERVICES) == set(PATTERNS.keys())
+
+
+def test_every_scanned_service_has_a_validator():
+    missing = sorted(set(PATTERNS.keys()) - set(VALIDATORS.keys()))
+    assert not missing, f"scanned services without a validator: {missing}"
 
 
 def test_query_lists_are_populated():

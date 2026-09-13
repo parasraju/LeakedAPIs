@@ -443,7 +443,7 @@ python main.py dashboard --port 5000
     function dashboardRow(k){
       const masked=k.key.length>16?k.key.slice(0,12)+'••••••••'+k.key.slice(-4):k.key.slice(0,6)+'••••';
       const badge=k.valid?'<span class="badge bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800">Valid</span>':'<span class="badge bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800">Invalid</span>';
-      const svcMap={Stripe:'credit-card',GitHub:'github',OpenAI:'bot',Firebase:'flame',Supabase:'database',Pinecone:'hexagon',Cloudflare:'cloud',Twilio:'phone',Sentry:'bug',Datadog:'bar-chart-2',Linear:'trello',Notion:'file-text',SlackBot:'message-square'};
+      const svcMap={Stripe:'credit-card',GitHub:'github',OpenAI:'bot',Firebase:'flame',Supabase:'database',Pinecone:'hexagon',Cloudflare:'cloud',Twilio:'phone',Sentry:'bug',Linear:'trello',Notion:'file-text',SlackBot:'message-square'};
       const svcIcon=svcMap[k.service]||'key-round';
       const repoName=(k.repo||'').split('/')[1]||k.repo||'-';
       const repoLink=k.repo_url?`<a href="${k.repo_url}" target="_blank" class="inline-flex items-center gap-1.5 hover:underline"><i data-lucide="github" class="w-3.5 h-3.5 text-stone-500"></i>${repoName}</a>`:`<span class="inline-flex items-center gap-1.5"><i data-lucide="github" class="w-3.5 h-3.5 text-stone-400"></i>${repoName}</span>`;
@@ -466,7 +466,7 @@ python main.py dashboard --port 5000
     function keysPageRow(k){
       const masked=k.key.length>16?k.key.slice(0,12)+'••••••••'+k.key.slice(-4):k.key.slice(0,6)+'••••';
       const badge=k.valid?'<span class="badge bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 border-emerald-200">Valid</span>':'<span class="badge bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border-red-200">Invalid</span>';
-      const svcMap={Stripe:'credit-card',GitHub:'github',OpenAI:'bot',Firebase:'flame',Supabase:'database',Pinecone:'hexagon',Cloudflare:'cloud',Twilio:'phone',Sentry:'bug',Datadog:'bar-chart-2',Linear:'trello',Notion:'file-text',SlackBot:'message-square'};
+      const svcMap={Stripe:'credit-card',GitHub:'github',OpenAI:'bot',Firebase:'flame',Supabase:'database',Pinecone:'hexagon',Cloudflare:'cloud',Twilio:'phone',Sentry:'bug',Linear:'trello',Notion:'file-text',SlackBot:'message-square'};
       const svcIcon=svcMap[k.service]||'key-round';
       const repoName=(k.repo||'').split('/')[1]||k.repo||'-';
       const repoLink=k.repo_url?`<a href="${k.repo_url}" target="_blank" class="inline-flex items-center gap-1.5 hover:underline"><i data-lucide="github" class="w-3.5 h-3.5"></i>${repoName}</a>`:`<span>${repoName}</span>`;
@@ -523,7 +523,7 @@ python main.py dashboard --port 5000
       const total=s.services.reduce((a,b)=>a+b.cnt,0);
       list.innerHTML=s.services.map(svc=>{
         const pct=total?(svc.cnt/total*100).toFixed(1):0;
-        const iconMap={Stripe:'credit-card',OpenAI:'bot',GitHub:'github',Firebase:'flame',Supabase:'database',Pinecone:'hexagon',Cloudflare:'cloud',Twilio:'phone',Sentry:'bug',Datadog:'bar-chart-2',Linear:'trello',Notion:'file-text',SlackBot:'message-square',HuggingFace:'brain',Anthropic:'sparkles',GoogleGemini:'sparkle'};
+        const iconMap={Stripe:'credit-card',OpenAI:'bot',GitHub:'github',Firebase:'flame',Supabase:'database',Pinecone:'hexagon',Cloudflare:'cloud',Twilio:'phone',Sentry:'bug',Linear:'trello',Notion:'file-text',SlackBot:'message-square',HuggingFace:'brain',Anthropic:'sparkles',GoogleGemini:'sparkle'};
         const ic=iconMap[svc.service]||'key-round';
         return `<li class="flex items-center justify-between px-4 py-2.5 text-sm"><span class="flex items-center gap-2"><i data-lucide="${ic}" class="w-4 h-4 text-stone-500"></i>${svc.service}</span><span class="text-xs font-mono bg-stone-100 dark:bg-stone-800 rounded-full px-2 py-1 border border-hairline">${svc.cnt} (${pct}%)</span></li>`;
       }).join(''); lucide.createIcons();
@@ -533,7 +533,7 @@ python main.py dashboard --port 5000
       const grid=document.getElementById('services-grid');
       const services=Object.entries(s).sort((a,b)=>b[1]-a[1]);
       if(!services.length){grid.innerHTML='<div class="col-span-3 card p-8 text-center text-muted text-sm">No services yet — run a scan</div>';return;}
-      const iconMap={Stripe:'credit-card',OpenAI:'bot',GitHub:'github',Firebase:'flame',Supabase:'database',Pinecone:'hexagon',Cloudflare:'cloud',Twilio:'phone',Sentry:'bug',Datadog:'bar-chart-2',Linear:'trello',Notion:'file-text',SlackBot:'message-square',HuggingFace:'brain',Anthropic:'sparkles',GoogleGemini:'sparkle',AWSKey:'cloud',TelegramBot:'send',DiscordBot:'message-circle',SendGrid:'mail',GitLab:'git-branch',Mailgun:'mail',Mapbox:'map'};
+      const iconMap={Stripe:'credit-card',OpenAI:'bot',GitHub:'github',Firebase:'flame',Supabase:'database',Pinecone:'hexagon',Cloudflare:'cloud',Twilio:'phone',Sentry:'bug',Linear:'trello',Notion:'file-text',SlackBot:'message-square',HuggingFace:'brain',Anthropic:'sparkles',GoogleGemini:'sparkle',AWSKey:'cloud',TelegramBot:'send',DiscordBot:'message-circle',SendGrid:'mail',GitLab:'git-branch',Mailgun:'mail',Mapbox:'map'};
       grid.innerHTML=services.map(([svc,cnt])=>{
         const ic=iconMap[svc]||'key-round';
         const validCnt=allKeys.filter(k=>k.service===svc&&k.valid).length;

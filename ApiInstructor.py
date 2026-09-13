@@ -121,6 +121,7 @@ class Scanner:
         self.existing_keys: set[str] = set()
         self.bloom = BloomFilter()
         self._content_hashes: set[str] = set()
+        self._saved_keys: set[str] = set()
         self._empty_pages_streak = 0
 
     def get_headers(self) -> dict[str, str]:
@@ -324,6 +325,7 @@ class Scanner:
                 logger.warning("Failed to fetch %s: %s", url, e)
                 continue
             if response.status_code == 200:
+                self._content_hashes.add(cache_key)
                 return response.text
         return ""
 
@@ -453,6 +455,9 @@ class Scanner:
             logger.info("Results saved to %s", self.result_file)
         if self.db:
             for r in results:
+                if r["key"] in self._saved_keys:
+                    continue
+                self._saved_keys.add(r["key"])
                 self.db.add_key(
                     key=r["key"],
                     service=r["type"],

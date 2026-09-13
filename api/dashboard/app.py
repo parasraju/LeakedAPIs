@@ -98,6 +98,91 @@ def activity():
     return jsonify(_db.get_activity(limit=200))
 
 
+@app.route("/api/providers")
+def providers():
+    from api.providers import list_providers
+    from api.providers.keys import all_credentials
+
+    creds = all_credentials()
+    return jsonify(
+        [
+            {
+                "id": p.id,
+                "name": p.name,
+                "env_var": p.env_var,
+                "base_url": p.base_url,
+                "auth_method": p.auth_method,
+                "openai_compatible": p.openai_compatible,
+                "supports_streaming": p.supports_streaming,
+                "supports_model_discovery": p.supports_model_discovery,
+                "status": p.status,
+                "doc_url": p.doc_url,
+                # masked key config (never the raw key)
+                "key_status": creds.get(p.id, {}).get("status", "not_configured"),
+                "key_masked": creds.get(p.id, {}).get("masked", "not configured"),
+            }
+            for p in list_providers()
+        ]
+    )
+
+
+@app.route("/api/services")
+def services():
+    from api.patterns import SERVICES
+
+    return jsonify([{"service": s} for s in SERVICES])
+
+
+@app.route("/api/models")
+def models():
+    from api.providers.models import get_model_registry
+
+    provider = request.args.get("provider")
+    return jsonify(get_model_registry().to_dict(provider))
+
+
+@app.route("/api/keys/status")
+def keys_status():
+    from api.providers.keys import all_credentials
+
+    return jsonify(all_credentials())
+
+
+@app.route("/api/health")
+def health():
+    from api.providers.validation import health_all
+
+    return jsonify(health_all())
+
+
+@app.route("/api/validate/<provider>", methods=["POST"])
+def validate_provider(provider):
+    from api.providers.validation import validate
+
+    data = request.get_json(silent=True) or {}
+    key = data.get("key")
+    result = validate(provider, key or None)
+    return jsonify(result)
+
+
+@app.route("/api/models/discover", methods=["POST"])
+def models_discover():
+    from api.providers.keys import get_api_key
+    from api.providers.models import get_model_registry
+
+    data = request.get_json(silent=True) or {}
+    provider = data.get("provider", "").strip()
+    if not provider:
+        return jsonify({"error": "provider required"}), 400
+    key = data.get("key") or get_api_key(provider)
+    if not key:
+        return jsonify({"error": f"No API key for '{provider}' (set env var or pass key)"}), 400
+    count, err = get_model_registry().discover(provider, key)
+    if err:
+        return jsonify({"error": err}), 400
+    return jsonify({"provider": provider, "discovered": count})
+
+
 @app.route("/api/scan/status")
 def scan_status():
     return jsonify(_scanner_status)

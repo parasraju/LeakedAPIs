@@ -6,7 +6,7 @@ import time
 import requests
 
 from .db import Database
-from .patterns import ALL_QUERIES, PATTERNS, is_placeholder
+from .patterns import ALL_QUERIES, PATTERNS, has_keyword_context, is_placeholder, shannon_entropy
 from .validators import VALIDATORS
 
 logger = logging.getLogger(__name__)
@@ -132,6 +132,13 @@ class Scanner:
                 continue
             for key in pattern.findall(content):
                 if is_placeholder(key):
+                    continue
+                # same filter as the dashboard scanner: reject low-entropy
+                # matches that have no key-like context around them (kills
+                # false positives like hex digests/hashes)
+                if shannon_entropy(key) < 2.5:
+                    continue
+                if not has_keyword_context(content, key) and shannon_entropy(key) < 3.2:
                     continue
                 found.append((name, key))
         return found
